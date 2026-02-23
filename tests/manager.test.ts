@@ -80,7 +80,7 @@ describe('TdnetManager', () => {
         mockGetDocument.mockReturnValue(undefined);
 
         // PdfParserのモック戻り値を設定
-        mockDownloadAndParse.mockResolvedValue('Markdown content mock');
+        mockDownloadAndParse.mockResolvedValue({ markdown: 'Markdown content mock', buffer: new ArrayBuffer(0) });
 
         // 実行
         await manager.sync({ limit: 1, downloadDelayMs: 0 }); // delayを0にしてすぐに終わらせる

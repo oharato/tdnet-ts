@@ -30,8 +30,12 @@
     "@types/node": "^25.3.0",
     "@typescript/native-preview": "7.0.0-dev.20260222.1",
     "oxlint": "^1.49.0",
+    "pdfreader": "^3.0.8",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@opendataloader/pdf": "^1.10.1"
   }
 }
