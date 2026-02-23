@@ -48,7 +48,7 @@ export class TdnetManager {
         }
 
         const items = apiData.items || [];
-        console.log(`Found ${items.length} records.`);
+        console.log(`Found ${items.length} records. (. skip, * new, P pdf saved)`);
 
         for (const dataItem of items) {
             const item = dataItem.Tdnet;
@@ -67,15 +67,13 @@ export class TdnetManager {
             // 既にDBにあるかチェックし、あればスキップ (idで判定)
             const existing = this.db.getDocument(String(docId));
             if (existing) {
-                console.log(`[Skip] Already exists: ${item.title}`);
+                process.stdout.write('.');
                 continue;
             }
 
-            console.log(`[Process] ${item.title}`);
             try {
                 let content = null;
                 if (item.document_url && item.document_url.endsWith('.pdf')) {
-                    console.log(`  -> Downloading and parsing PDF...`);
                     // NOTE: ダウンロード失敗・変換失敗でもDBには記録を残す（mdなしで）ようにした方が堅牢
                     const parsed = await this.parser.downloadAndParse(item.document_url);
                     content = parsed.markdown;
@@ -88,8 +86,12 @@ export class TdnetManager {
                             // ファイル名をIDベースにする
                             const fileName = `${docId}.pdf`;
                             const filePath = path.join(options.savePdfDir, fileName);
-                            fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
-                            console.log(`  -> Saved PDF to ${filePath}`);
+                            if (fs.existsSync(filePath)) {
+                                // 既に存在
+                            } else {
+                                fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
+                                process.stdout.write('P');
+                            }
                         } catch (writeErr: any) {
                             console.error(`  -> Failed to save local PDF: ${writeErr.message}`);
                         }
@@ -117,17 +119,18 @@ export class TdnetManager {
                 };
 
                 this.db.insertDocument(doc);
-                console.log(`  -> Saved to DB.`);
+                process.stdout.write('*');
 
             } catch (e: any) {
-                console.error(`  -> Error processing ${item.document_url}: `, e.message);
+                process.stdout.write('!');
+                console.error(`\n  Error: ${item.document_url}: ${e.message}`);
             }
 
             // レートリミット対策のためのディレイ
             await delay(downloadDelayMs);
         }
 
-        console.log('Sync complete.');
+        console.log('\nSync complete.');
     }
 
     /**

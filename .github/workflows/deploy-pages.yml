@@ -1,0 +1,63 @@
+name: Deploy Yutai Viewer to GitHub Pages
+
+on:
+  schedule:
+    # 平日 JST 18:00 (UTC 09:00) に実行
+    - cron: '0 9 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      # PDF キャッシュの復元
+      - uses: actions/cache/restore@v5
+        id: pdf-cache-restore
+        with:
+          path: web/pdfs
+          key: pdfs-${{ github.run_id }}
+          restore-keys: pdfs-
+
+      # ビルド & データ取得
+      - run: pnpm build
+      - run: pnpm web:export
+
+      # PDF キャッシュの保存
+      - uses: actions/cache/save@v5
+        if: always()
+        with:
+          path: web/pdfs
+          key: pdfs-${{ github.run_id }}
+
+      # GitHub Pages へデプロイ
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web
+      - uses: actions/deploy-pages@v4
+        id: deployment
