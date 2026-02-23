@@ -41,17 +41,18 @@ export class PdfParser {
     }
 
     /**
-     * 指定したURLからPDFをダウンロードしてMarkdownに変換する
+     * 指定したURLからPDFをダウンロードしてMarkdownに変換しつつ、生データも返す
      * @param url PDFのURL
-     * @returns 変換されたMarkdown文字列
+     * @returns 変換されたMarkdown文字列と、PDFの生データ (ArrayBuffer)
      */
-    public async downloadAndParse(url: string): Promise<string> {
+    public async downloadAndParse(url: string): Promise<{ markdown: string, buffer: ArrayBuffer }> {
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`Failed to download PDF: ${response.statusText}`);
         }
 
         const arrayBuffer = await response.arrayBuffer();
-        return this.parsePdfToMarkdown(arrayBuffer);
+        const markdown = await this.parsePdfToMarkdown(arrayBuffer);
+        return { markdown, buffer: arrayBuffer };
     }
 }

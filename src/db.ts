@@ -13,7 +13,8 @@ export class DbClient {
   private init() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS tdnet_documents (
-        document_url TEXT PRIMARY KEY,
+        id TEXT PRIMARY KEY,
+        document_url TEXT NOT NULL,
         published_at TEXT NOT NULL,
         ticker TEXT NOT NULL,
         company_name TEXT NOT NULL,
@@ -27,13 +28,14 @@ export class DbClient {
   public insertDocument(doc: TdnetDocument) {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO tdnet_documents (
-        document_url, published_at, ticker, company_name, title, content, created_at
+        id, document_url, published_at, ticker, company_name, title, content, created_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?
       )
     `);
 
     stmt.run(
+      doc.id,
       doc.documentUrl,
       doc.publishedAt,
       doc.ticker,
@@ -44,14 +46,15 @@ export class DbClient {
     );
   }
 
-  public getDocument(documentUrl: string): TdnetDocument | undefined {
+  public getDocument(id: string): TdnetDocument | undefined {
     const stmt = this.db.prepare(`
-      SELECT * FROM tdnet_documents WHERE document_url = ?
+      SELECT * FROM tdnet_documents WHERE id = ?
     `);
-    const row = stmt.get(documentUrl) as Record<string, string> | undefined;
+    const row = stmt.get(id) as Record<string, string> | undefined;
     if (!row) return undefined;
 
     return {
+      id: String(row.id),
       publishedAt: row.published_at,
       ticker: row.ticker,
       companyName: row.company_name,
@@ -103,6 +106,7 @@ export class DbClient {
     const rows = stmt.all(...params) as Record<string, string>[];
 
     return rows.map(row => ({
+      id: String(row.id),
       publishedAt: row.published_at,
       ticker: row.ticker,
       companyName: row.company_name,
@@ -119,6 +123,7 @@ export class DbClient {
     `);
     const rows = stmt.all(limit) as Record<string, string>[];
     return rows.map(row => ({
+      id: String(row.id),
       publishedAt: row.published_at,
       ticker: row.ticker,
       companyName: row.company_name,

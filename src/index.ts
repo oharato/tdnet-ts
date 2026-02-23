@@ -3,6 +3,8 @@ import { DbClient } from './db.js';
 import { PdfParser } from './parser.js';
 import { TdnetDocument } from './types.js';
 import { delay } from './utils.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export * from './types.js';
 export { ApiClient, DbClient, PdfParser };
@@ -11,6 +13,7 @@ export interface SyncOptions {
     limit?: number;           // デフォルト100
     date?: string;            // YYYY-MM-DD (指定がなければ直近)
     downloadDelayMs?: number; // PDFダウンロード間の待機時間(デフォルト1000ms)
+    savePdfDir?: string;      // PDFを保存するディレクトリ。指定された場合のみ保存。
 }
 
 /**
@@ -58,8 +61,11 @@ export class TdnetManager {
                 : rawUrl;
             item.document_url = cleanUrl;
 
-            // 既にDBにあるかチェックし、あればスキップ
-            const existing = this.db.getDocument(item.document_url);
+            // URLからドキュメントIDを抽出 (e.g. 140120260220565990.pdf -> 140120260220565990)
+            const urlBasename = path.basename(item.document_url).replace(/\.pdf$/i, '');
+            const docId = urlBasename || item.id;
+            // 既にDBにあるかチェックし、あればスキップ (idで判定)
+            const existing = this.db.getDocument(String(docId));
             if (existing) {
                 console.log(`[Skip] Already exists: ${item.title}`);
                 continue;
@@ -71,7 +77,23 @@ export class TdnetManager {
                 if (item.document_url && item.document_url.endsWith('.pdf')) {
                     console.log(`  -> Downloading and parsing PDF...`);
                     // NOTE: ダウンロード失敗・変換失敗でもDBには記録を残す（mdなしで）ようにした方が堅牢
-                    content = await this.parser.downloadAndParse(item.document_url);
+                    const parsed = await this.parser.downloadAndParse(item.document_url);
+                    content = parsed.markdown;
+
+                    if (options.savePdfDir) {
+                        try {
+                            if (!fs.existsSync(options.savePdfDir)) {
+                                fs.mkdirSync(options.savePdfDir, { recursive: true });
+                            }
+                            // ファイル名をIDベースにする
+                            const fileName = `${docId}.pdf`;
+                            const filePath = path.join(options.savePdfDir, fileName);
+                            fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
+                            console.log(`  -> Saved PDF to ${filePath}`);
+                        } catch (writeErr: any) {
+                            console.error(`  -> Failed to save local PDF: ${writeErr.message}`);
+                        }
+                    }
                 }
 
                 // 末尾の0を除去して4桁のtickerにする (一部の例外がある場合も考慮してendsWith判定)
@@ -84,11 +106,12 @@ export class TdnetManager {
                 const publishedAt = new Date(jstDateStr).toISOString();
 
                 const doc: TdnetDocument = {
+                    id: docId,
                     publishedAt,
                     ticker,
                     companyName: item.company_name,
                     title: item.title,
-                    documentUrl: item.document_url,
+                    documentUrl: item.document_url, // URLはそのまま保存する
                     content,
                     createdAt: new Date().toISOString()
                 };

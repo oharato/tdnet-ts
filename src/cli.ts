@@ -22,6 +22,13 @@ async function main() {
             json: {
                 type: 'boolean',
             },
+            'save-pdf': {
+                type: 'string',
+            },
+            content: {
+                type: 'boolean',
+                short: 'c',
+            },
             ticker: {
                 type: 'string',
                 short: 't',
@@ -51,7 +58,8 @@ async function main() {
             case 'sync': {
                 const limit = values.limit ? parseInt(String(values.limit), 10) : 100;
                 const date = values.date ? String(values.date) : undefined;
-                await manager.sync({ limit, date });
+                const savePdfDir = values['save-pdf'] ? String(values['save-pdf']) : undefined;
+                await manager.sync({ limit, date, savePdfDir });
                 break;
             }
 
@@ -93,12 +101,14 @@ async function main() {
                         }
 
                         return {
+                            id: doc.id,
                             publishedAt: doc.publishedAt,
                             ticker: doc.ticker,
                             companyName: doc.companyName,
                             title: doc.title,
                             documentUrl: doc.documentUrl,
                             snippet,
+                            ...(values.content ? { content: doc.content } : {}),
                         };
                     });
                     console.log(JSON.stringify(jsonOutput, null, 2));
@@ -111,6 +121,7 @@ async function main() {
                     console.log(`\n[${doc.publishedAt}] ${doc.ticker} ${doc.companyName}`);
                     console.log(`Title: ${doc.title}`);
                     console.log(`URL: ${doc.documentUrl}`);
+                    console.log(`ID: ${doc.id}`);
 
                     // Create snippet if content is available and contains keyword
                     if (doc.content && keyword) {
@@ -136,6 +147,12 @@ async function main() {
                         }
                     }
 
+                    if (values.content && doc.content) {
+                        console.log(`\n--- Content Start ---`);
+                        console.log(doc.content);
+                        console.log(`--- Content End ---\n`);
+                    }
+
                     console.log('---');
                 }
                 break;
@@ -153,8 +170,10 @@ Commands:
 Options:
   --limit, -l   (sync) Number of items to fetch. (search) Max number of results (default: 100)
   --date,  -d   (sync only) Fetch items for specific date (YYYY-MM-DD or YYYYMMDD)
+  --save-pdf    (sync only) Directory to save the downloaded PDFs (e.g. ./web/pdfs)
   --db          Path to SQLite database file (default: ./tdnet.sqlite)
   --json        (search only) Output results in JSON format
+  --content, -c (search only) Include the full converted markdown document content
   --ticker, -t  (search only) Filter by company ticker code
   --title       (search only) Filter specifically by document title
   --start,  -s  (search only) Filter by start date (YYYY-MM-DD)

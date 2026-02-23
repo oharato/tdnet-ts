@@ -15,14 +15,19 @@
 ### 1. ディレクトリ構造
 ```text
 tdnet-ts/
-├── bin/            # CLIエントリポイント
 ├── docs/           # ドキュメントディレクトリ
 ├── src/            # ソースコード
-│   ├── api/        # TDnet API クライアント処理
-│   ├── db/         # SQLite アクセス処理 (node:sqlite)
-│   ├── parser/     # PDF のダウンロードおよび Markdown 変換処理
-│   ├── cli/        # CLI 用のコマンド実装
+│   ├── api.ts      # TDnet API クライアント処理
+│   ├── db.ts       # SQLite アクセス処理 (node:sqlite)
+│   ├── parser.ts   # PDF のダウンロードおよび Markdown 変換処理
+│   ├── cli.ts      # CLI 用のコマンド実装
+│   ├── types.ts    # 型定義
+│   ├── utils.ts    # ユーティリティ関数
 │   └── index.ts    # ライブラリのエクスポート
+├── web/            # Webビューアー
+│   ├── index.html  # Alpine.jsベースのUI
+│   ├── style.css   # スタイルシート
+│   └── pdfs/       # ダウンロード済みPDFファイル (--save-pdf で生成)
 ├── package.json
 ├── tsconfig.json
 └── vite.config.ts  # ビルド設定
@@ -31,10 +36,11 @@ tdnet-ts/
 ### 2. データストア (SQLite) 設計
 組み込みの `node:sqlite` を利用し、データベーススキーマを設計する。
 
-#### `tdnet_documents` テーブル (案)
+#### `tdnet_documents` テーブル
 | カラム名 | データ型 | 説明 |
 | :--- | :--- | :--- |
-| `document_url` | TEXT (PK) | PDFファイルのオリジンURL (※リダイレクト用文字列は除去済み) |
+| `id` | TEXT (PK) | TDnetドキュメントID (PDFのURLベースネームから抽出、例: `140120260220565990`) |
+| `document_url` | TEXT | PDFファイルのオリジンURL (※リダイレクト用文字列は除去済み) |
 | `published_at` | TEXT | 公開日時 (JSTからUTC/ISO8601形式へ変換済み) |
 | `ticker` | TEXT | 銘柄コード (末尾0を除去済みの4桁) |
 | `company_name` | TEXT | 会社名 |
@@ -54,9 +60,16 @@ tdnet-ts/
 - `searchDocuments(query: { keyword?: string, companyCode?: string, from?: string, to?: string })`: DB内のドキュメントを検索して返却。
 
 ### 5. CLIインターフェース
-パッケージをグローバルインストールするか `npx` (npx tsgo cli)で実行可能な CLI を提供。
-- `tdnet-ts sync --start YYYY-MM-DD --end YYYY-MM-DD`: データの同期と変換処理を実行
-- `tdnet-ts search "決算"`: 引数に与えられたキーワードで検索
+パッケージをグローバルインストールするか `npx` で実行可能な CLI を提供。
+- `tdnet-ts sync [--limit N] [--date YYYYMMDD] [--save-pdf DIR]`: データの同期と変換処理を実行。`--save-pdf` で元PDFもローカルに保存。
+- `tdnet-ts search "キーワード" [--ticker CODE] [--title TITLE] [--limit N] [--content] [--json] [--start DATE] [--end DATE]`: 引数に与えられた条件で検索
+
+### 6. Webビューアー
+- `web/index.html`: Alpine.jsベースのSPAで、優待関連の開示情報を一覧表示する。
+- `web/style.css`: ダークテーマ・グラスモーフィズムを採用したモダンなUI。
+- `pnpm run web:export`: 優待関連データをJSON (`web/yutai.json`) として出力するnpmスクリプト。
+- `pnpm run web:dev`: Vite開発サーバーを起動し、ブラウザで確認できる。
+- ローカルに保存されたPDF (`web/pdfs/{id}.pdf`) を直接参照可能。
 
 ## テストと品質管理
 - **テストフレームワーク**: `vitest` を用いて単体テストを記述・実行する。

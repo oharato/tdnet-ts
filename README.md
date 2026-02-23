@@ -5,8 +5,10 @@ TDnet（東京証券取引所適時開示情報）APIから開示情報および
 ## 特徴
 - **[ヤノシン TDnet API](https://webapi.yanoshin.jp/tdnet/)** に対応し、指定日や直近の適時開示情報を取得
 - PDF内テキストを `@opendocsg/pdf2md` を利用してMarkdownとして抽出・保存
+- `--save-pdf` オプションでダウンロードしたPDF原本もローカルに保存可能
 - Node.js v24 組み込みの `node:sqlite` によるデータベース管理
 - コマンドラインツール(CLI)と、アプリケーションから直接利用できるライブラリ(ESM/CJS)の両方を提供
+- Alpine.jsを使った株主優待情報のWebビューアー付き
 
 ## 必要環境
 - Node.js v22.12.0 以上 (v22の組み込みSQLiteまたはNode.js v24以上を推奨)
@@ -44,6 +46,9 @@ npx tdnet-ts sync --limit 10   # または -l 10
 
 # 日付を指定して取得 (YYYY-MM-DD または YYYYMMDD)
 npx tdnet-ts sync --date 2026-02-20   # または -d 2026-02-20
+
+# PDFファイルをローカルに保存しながら同期する
+npx tdnet-ts sync --save-pdf web/pdfs
 ```
 
 ### 2. データの検索 (search)
@@ -62,12 +67,40 @@ npx tdnet-ts search "株式" --title "分割"
 # 表示件数を指定する (デフォルト 100件)
 npx tdnet-ts search "優待" --limit 5   # または -l 5
 
+# 検索結果にPDFから変換したMarkdown全文も含める
+npx tdnet-ts search "優待" --limit 1 --content   # または -c
+
 # 期間を指定して絞り込み (開始日と終了日)
 npx tdnet-ts search "配当" --start 2026-01-01 --end 2026-03-31   # または -s, -e
 
 # JSONフォーマットで結果を出力 (jq等との連携に便利)
+# ※ --content と併用した場合は"content"キーにMarkdown本文が含まれます
 npx tdnet-ts search "決算" --json
 ```
+
+---
+
+### 3. Webビューアー (優待一覧)
+
+ダウンロードした優待関連の開示情報をブラウザで一覧表示するWebビューアーが付属しています。
+
+```bash
+# 1. PDFをローカルに保存しながらデータを同期
+npx tdnet-ts sync --save-pdf web/pdfs
+
+# 2. 優待関連のデータをJSONとして出力
+pnpm run web:export
+
+# 3. Vite開発サーバーを起動してブラウザで確認
+pnpm run web:dev
+# → http://localhost:5173/ でアクセス
+```
+
+Webビューアーでは以下の機能を提供します：
+- 企業名・タイトル・本文でのインクリメンタル検索
+- タイトルクリックでローカルPDFを開く（`[TDnet]` リンクで元URLも参照可能）
+- 開示本文の展開・折りたたみ表示
+- 検索キーワードのハイライト
 
 ### 共通オプション
 `--db <path>` オプションをつけることで、書き込み/読み込み先のSQLiteデータベースパスを指定できます。
@@ -125,15 +158,17 @@ async function main() {
     // 3. 結果の表示
     for (const doc of results) {
       interface TdnetDocument {
+        id: string;             // TDnetドキュメントID (主キー、例: 140120260220565990)
         publishedAt: string;    // 開示日時 (UTC ISO形式)
         ticker: string;         // 銘柄コード (末尾0を除去した4桁)
         companyName: string;    // 会社名
         title: string;          // 件名
-        documentUrl: string;    // PDFのURL (主キー)
+        documentUrl: string;    // PDFのURL
         content: string | null; // 変換されたMarkdown本文
         createdAt: string;      // レコード作成日時
       }
       console.log(`[${doc.publishedAt}] ${doc.companyName} (${doc.ticker})`);
+      console.log(`ID: ${doc.id}`);
       console.log(`Title: ${doc.title}`);
       console.log(`URL: ${doc.documentUrl}`);
       // console.log(doc.content); // 抽出されたMarkdown本文

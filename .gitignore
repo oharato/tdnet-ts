@@ -2,3 +2,5 @@ node_modules
 build
 dist
 *.sqlite
+yutai.json
+web/pdfs/*.pdf
