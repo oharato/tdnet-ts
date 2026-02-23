@@ -35,24 +35,28 @@ jobs:
 
       - run: pnpm install
 
-      # PDF キャッシュの復元
+      # PDF + DB キャッシュの復元
       - uses: actions/cache/restore@v5
-        id: pdf-cache-restore
+        id: data-cache-restore
         with:
-          path: web/pdfs
-          key: pdfs-${{ github.run_id }}
-          restore-keys: pdfs-
+          path: |
+            web/pdfs
+            tdnet.sqlite
+          key: data-${{ github.run_id }}
+          restore-keys: data-
 
       # ビルド & データ取得
       - run: pnpm build
       - run: pnpm web:export
 
-      # PDF キャッシュの保存
+      # PDF + DB キャッシュの保存
       - uses: actions/cache/save@v5
         if: always()
         with:
-          path: web/pdfs
-          key: pdfs-${{ github.run_id }}
+          path: |
+            web/pdfs
+            tdnet.sqlite
+          key: data-${{ github.run_id }}
 
       # GitHub Pages へデプロイ
       - uses: actions/configure-pages@v5
