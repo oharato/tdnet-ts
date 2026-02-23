@@ -23,11 +23,18 @@ tdnet-ts/
 │   ├── cli.ts      # CLI 用のコマンド実装
 │   ├── types.ts    # 型定義
 │   ├── utils.ts    # ユーティリティ関数
-│   └── index.ts    # ライブラリのエクスポート
+│   ├── index.ts    # ライブラリのエクスポート
+│   └── utils.ts    # ユーティリティ関数
+├── scripts/        # 補助スクリプト
+│   └── generate-rss.mjs # RSS生成スクリプト
 ├── web/            # Webビューアー
 │   ├── index.html  # Alpine.jsベースのUI
 │   ├── style.css   # スタイルシート
-│   └── pdfs/       # ダウンロード済みPDFファイル (--save-pdf で生成)
+│   ├── feed.xml    # RSSフィード (git対象外)
+│   └── pdfs/       # ダウンロード済みPDFファイル (git対象外)
+├── .github/
+│   └── workflows/
+│       └── deploy-pages.yml # GitHub Actionsワークフロー
 ├── package.json
 ├── tsconfig.json
 └── vite.config.ts  # ビルド設定
@@ -56,20 +63,28 @@ tdnet-ts/
 ### 4. アプリケーションインターフェース (API)
 ライブラリ側では以下の主要な機能（関数）を提供する。
 - `fetchRecent(limit?: number)`: 直近のデータ一覧を取得する。
-- `fetchAndSaveByDateRange(startDate: string, endDate: string)`: 期間を指定してPDFダウンロ―ドと変換、DBへの保存を一括実施。
-- `searchDocuments(query: { keyword?: string, companyCode?: string, from?: string, to?: string })`: DB内のドキュメントを検索して返却。
+- `fetchAndSaveByDateRange(startDate: string, endDate: string)`: 期間を指定してPDFダウンロードと変換、DBへの保存を一括実施。
+- `sync(options)`: `--limit` や `--date` に基づき最新情報を同期する。リトライロジック（最大3回）を内蔵。
+- `searchDocuments(query)`: DB内のドキュメントを検索して返却。
 
 ### 5. CLIインターフェース
 パッケージをグローバルインストールするか `npx` で実行可能な CLI を提供。
 - `tdnet-ts sync [--limit N] [--date YYYYMMDD] [--save-pdf DIR]`: データの同期と変換処理を実行。`--save-pdf` で元PDFもローカルに保存。
 - `tdnet-ts search "キーワード" [--ticker CODE] [--title TITLE] [--limit N] [--content] [--json] [--start DATE] [--end DATE]`: 引数に与えられた条件で検索
 
-### 6. Webビューアー
-- `web/index.html`: Alpine.jsベースのSPAで、優待関連の開示情報を一覧表示する。
-- `web/style.css`: ダークテーマ・グラスモーフィズムを採用したモダンなUI。
-- `pnpm run web:export`: 優待関連データをJSON (`web/yutai.json`) として出力するnpmスクリプト。
-- `pnpm run web:dev`: Vite開発サーバーを起動し、ブラウザで確認できる。
-- ローカルに保存されたPDF (`web/pdfs/{id}.pdf`) を直接参照可能。
+### 6. Webビューアー & RSS
+- `web/index.html`: Alpine.jsベースのSPA。2カラムレイアウトで詳細情報を表示。ダーク/ライトモード対応。
+- `web/style.css`: CSS変数を用いたテーマ管理とモダンなUIデザイン。
+- `scripts/generate-rss.mjs`: `web/yutai.json` から RSS 2.0 形式の `web/feed.xml` を生成。
+- `pnpm run web:export`: データの同期、優待JSON出力、RSS生成を一括して行う。
+- `pnpm run web:dev`: Vite開発サーバーを起動。
+- ローカルに保存されたPDFを `/pdfs/{id}.pdf` として直接参照可能。
+
+### 7. 自動化 (GitHub Actions)
+- `.github/workflows/deploy-pages.yml`:
+  - 平日 JST 18:00 に定期実行。
+  - `actions/cache` により `tdnet.sqlite` と `web/pdfs/` をキャッシュし、高速な増分更新を実現。
+  - 成功時に `web/` ディレクトリを GitHub Pages にデプロイ。
 
 ## テストと品質管理
 - **テストフレームワーク**: `vitest` を用いて単体テストを記述・実行する。
