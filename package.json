@@ -1,0 +1,36 @@
+{
+  "name": "tdnet-ts",
+  "version": "1.0.0",
+  "description": "TDnet TypeScript Library and CLI",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "tdnet-ts": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "postbuild": "chmod +x dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint",
+    "format": "oxfmt -w ."
+  },
+  "keywords": [
+    "tdnet",
+    "api",
+    "pdf"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@opendocsg/pdf2md": "^0.2.4",
+    "@types/node": "^25.3.0",
+    "@typescript/native-preview": "7.0.0-dev.20260222.1",
+    "oxlint": "^1.49.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}
