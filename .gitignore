@@ -4,3 +4,4 @@ dist
 *.sqlite
 yutai.json
 web/pdfs/*.pdf
+web/feed.xml

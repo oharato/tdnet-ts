@@ -48,7 +48,16 @@ export class TdnetManager {
         }
 
         const items = apiData.items || [];
-        console.log(`Found ${items.length} records. (. skip, * new, P pdf saved)`);
+        console.log(`Found ${items.length} records.`);
+
+        let progress = '';
+        let processed = 0;
+        const flushProgress = () => {
+            if (progress) {
+                console.log(`  [${processed}/${items.length}] ${progress}`);
+                progress = '';
+            }
+        };
 
         for (const dataItem of items) {
             const item = dataItem.Tdnet;
@@ -66,71 +75,87 @@ export class TdnetManager {
             const docId = urlBasename || item.id;
             // 既にDBにあるかチェックし、あればスキップ (idで判定)
             const existing = this.db.getDocument(String(docId));
+            processed++;
             if (existing) {
-                process.stdout.write('.');
+                progress += '.';
+                if (processed % 50 === 0) flushProgress();
                 continue;
             }
 
-            try {
-                let content = null;
-                if (item.document_url && item.document_url.endsWith('.pdf')) {
-                    // NOTE: ダウンロード失敗・変換失敗でもDBには記録を残す（mdなしで）ようにした方が堅牢
-                    const parsed = await this.parser.downloadAndParse(item.document_url);
-                    content = parsed.markdown;
+            const MAX_RETRIES = 3;
+            let success = false;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    let content = null;
+                    if (item.document_url && item.document_url.endsWith('.pdf')) {
+                        // NOTE: ダウンロード失敗・変換失敗でもDBには記録を残す（mdなしで）ようにした方が堅牢
+                        const parsed = await this.parser.downloadAndParse(item.document_url);
+                        content = parsed.markdown;
 
-                    if (options.savePdfDir) {
-                        try {
-                            if (!fs.existsSync(options.savePdfDir)) {
-                                fs.mkdirSync(options.savePdfDir, { recursive: true });
+                        if (options.savePdfDir) {
+                            try {
+                                if (!fs.existsSync(options.savePdfDir)) {
+                                    fs.mkdirSync(options.savePdfDir, { recursive: true });
+                                }
+                                // ファイル名をIDベースにする
+                                const fileName = `${docId}.pdf`;
+                                const filePath = path.join(options.savePdfDir, fileName);
+                                if (fs.existsSync(filePath)) {
+                                    // 既に存在
+                                } else {
+                                    fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
+                                    progress += 'P';
+                                }
+                            } catch (writeErr: any) {
+                                console.error(`  -> Failed to save local PDF: ${writeErr.message}`);
                             }
-                            // ファイル名をIDベースにする
-                            const fileName = `${docId}.pdf`;
-                            const filePath = path.join(options.savePdfDir, fileName);
-                            if (fs.existsSync(filePath)) {
-                                // 既に存在
-                            } else {
-                                fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
-                                process.stdout.write('P');
-                            }
-                        } catch (writeErr: any) {
-                            console.error(`  -> Failed to save local PDF: ${writeErr.message}`);
                         }
                     }
+
+                    // 末尾の0を除去して4桁のtickerにする (一部の例外がある場合も考慮してendsWith判定)
+                    const ticker = item.company_code.endsWith('0')
+                        ? item.company_code.slice(0, -1)
+                        : item.company_code;
+
+                    // pubdate（例: "2026-02-20 20:00:00"）をJST(+09:00)として解釈し、UTC ISO形式(Z)に変換
+                    const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
+                    const publishedAt = new Date(jstDateStr).toISOString();
+
+                    const doc: TdnetDocument = {
+                        id: docId,
+                        publishedAt,
+                        ticker,
+                        companyName: item.company_name,
+                        title: item.title,
+                        documentUrl: item.document_url, // URLはそのまま保存する
+                        content,
+                        createdAt: new Date().toISOString()
+                    };
+
+                    this.db.insertDocument(doc);
+                    progress += '*';
+                    success = true;
+                    break; // Success! Exit retry loop
+
+                } catch (e: any) {
+                    if (attempt < MAX_RETRIES) {
+                        // console.log(`  -> Retry ${attempt}/${MAX_RETRIES} for ${docId}`);
+                        await delay(1000 * attempt); // Fixed delay + backoff
+                    } else {
+                        progress += '!';
+                        console.error(`\n  Error: ${item.document_url}: ${(e as Error).message}`);
+                    }
                 }
-
-                // 末尾の0を除去して4桁のtickerにする (一部の例外がある場合も考慮してendsWith判定)
-                const ticker = item.company_code.endsWith('0')
-                    ? item.company_code.slice(0, -1)
-                    : item.company_code;
-
-                // pubdate（例: "2026-02-20 20:00:00"）をJST(+09:00)として解釈し、UTC ISO形式(Z)に変換
-                const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
-                const publishedAt = new Date(jstDateStr).toISOString();
-
-                const doc: TdnetDocument = {
-                    id: docId,
-                    publishedAt,
-                    ticker,
-                    companyName: item.company_name,
-                    title: item.title,
-                    documentUrl: item.document_url, // URLはそのまま保存する
-                    content,
-                    createdAt: new Date().toISOString()
-                };
-
-                this.db.insertDocument(doc);
-                process.stdout.write('*');
-
-            } catch (e: any) {
-                process.stdout.write('!');
-                console.error(`\n  Error: ${item.document_url}: ${e.message}`);
             }
+
+            if (processed % 50 === 0) flushProgress();
 
             // レートリミット対策のためのディレイ
             await delay(downloadDelayMs);
         }
 
-        console.log('\nSync complete.');
+        flushProgress();
+        console.log('Sync complete.');
     }
 
     /**
