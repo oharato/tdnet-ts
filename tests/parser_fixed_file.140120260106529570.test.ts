@@ -12,7 +12,6 @@ describe('PdfParser: 140120260106529570.pdf test', () => {
 
         // 現在のパーサー出力をベースにした期待値 (ベタ書き)
         const expected = `
-<!-- page:1 -->
 各 位
 
 2026 年 2 月 20 日

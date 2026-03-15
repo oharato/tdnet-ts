@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { PdfParser } from '../src/parser.v8.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { PdfParser } from '../src/parser.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -9,14 +9,9 @@ describe('PdfParser Integration Tests with real PDFs', () => {
 
     beforeEach(() => {
         parser = new PdfParser();
-        global.fetch = vi.fn();
     });
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it('should list and parse all fixture PDFs using mocks', async () => {
+    it('should list and parse all fixture PDFs using local @oharato/pdf2md-ts', async () => {
         const files = await fs.readdir(fixtureDir);
         const pdfFiles = files.filter(f => f.endsWith('.pdf'));
 
@@ -26,30 +21,7 @@ describe('PdfParser Integration Tests with real PDFs', () => {
             const filePath = path.join(fixtureDir, filename);
             const buffer = await fs.readFile(filePath);
 
-            const docId = filename.replace('.pdf', '');
-            const mdFixturePath = path.join(fixtureDir, `${docId}.md`);
-            let mockMarkdown = 'Dummy markdown content with 日本語';
-            try {
-                mockMarkdown = await fs.readFile(mdFixturePath, 'utf-8');
-            } catch (e) {
-                // Fallback to dummy
-            }
-
-            // Mock LlamaParse upload
-            (global.fetch as any).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ id: 'mock-job-id' }),
-            });
-            // Mock LlamaParse poll
-            (global.fetch as any).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    job: { status: 'COMPLETED' },
-                    markdown: { pages: [{ markdown: mockMarkdown }] }
-                }),
-            });
-
-            console.log(`Testing file: ${filename} (mocked)`);
+            console.log(`Testing file: ${filename} (local parser)`);
             const markdown = await parser.parsePdfToMarkdown(buffer);
             console.log(`Markdown length for ${filename}: ${markdown.length}`);
 
