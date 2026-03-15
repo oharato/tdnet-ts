@@ -56,7 +56,7 @@
             </div>
 
             <div class="sidebar-list" x-show="!loading || items.length > 0">
-                <template x-for="item in filteredItems" :key="item.id">
+                <template x-for="item in paginatedItems" :key="item.id">
                     <button class="list-item" :class="{ 'active': selected?.id === item.id }" @click="selected = item">
                         <div class="list-item-header">
                             <span class="ticker" x-text="item.ticker"></span>
@@ -68,6 +68,35 @@
                 </template>
                 <div x-show="filteredItems.length === 0" class="empty-list">
                     一致する結果がありません
+                </div>
+            </div>
+
+            <!-- ページネーションコントロール -->
+            <div class="pagination-controls" x-show="!loading && totalPages > 1">
+                <div class="page-nav">
+                    <button class="page-btn prev" :disabled="currentPage === 1" @click="currentPage--" aria-label="前のページ">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <span class="page-info">
+                        <strong x-text="currentPage"></strong> <span class="page-info-sep">/</span> <span x-text="totalPages"></span>
+                    </span>
+                    <button class="page-btn next" :disabled="currentPage === totalPages" @click="currentPage++" aria-label="次のページ">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                </div>
+                <div class="page-size-wrapper">
+                    <select class="page-size-select" x-model.number="itemsPerPage" @change="currentPage = 1">
+                        <option value="20">20件</option>
+                        <option value="50">50件</option>
+                        <option value="100">100件</option>
+                    </select>
+                    <svg class="page-size-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                 </div>
             </div>
 
@@ -146,8 +175,16 @@
                 loading: true,
                 selected: null,
                 theme: localStorage.getItem('theme') || 'dark',
+                
+                // ページネーション用
+                currentPage: 1,
+                itemsPerPage: 50,
 
                 async init() {
+                    // search や filterYutai が変わったら 1 ページ目に戻すウォッチャー
+                    this.$watch('searchQuery', () => { this.currentPage = 1; });
+                    this.$watch('filterYutai', () => { this.currentPage = 1; });
+                    
                     await this.fetchData();
                 },
 
@@ -163,7 +200,7 @@
                         if (!res.ok) throw new Error('Failed to fetch data');
                         const data = await res.json();
                         this.items = data;
-                        if (this.filteredItems.length > 0) this.selected = this.filteredItems[0];
+                        if (this.paginatedItems.length > 0) this.selected = this.paginatedItems[0];
                     } catch (e) {
                         console.error('Failed to load export.json', e);
                     } finally {
@@ -192,6 +229,16 @@
                     }
                     
                     return result;
+                },
+
+                get totalPages() {
+                    return Math.max(1, Math.ceil(this.filteredItems.length / this.itemsPerPage));
+                },
+
+                get paginatedItems() {
+                    const start = (this.currentPage - 1) * this.itemsPerPage;
+                    const end = start + this.itemsPerPage;
+                    return this.filteredItems.slice(start, end);
                 },
 
                 formatDate(dateStr) {

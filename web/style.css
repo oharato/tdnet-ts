@@ -59,6 +59,102 @@ body {
     transition: background 0.3s, color 0.3s;
 }
 
+/* ── Pagination Controls ── */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--panel-bg);
+    border-top: 1px solid var(--card-border);
+    font-size: 0.85rem;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.05); /* optional shadow to lift it up slightly */
+    z-index: 10;
+}
+
+.page-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg);
+    padding: 0.25rem;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+}
+
+.page-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--active-bg);
+}
+
+.page-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.page-info {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+    min-width: 3.5rem;
+    text-align: center;
+    user-select: none;
+}
+.page-info strong {
+    color: var(--text);
+    font-weight: 600;
+}
+.page-info-sep {
+    margin: 0 0.1rem;
+    opacity: 0.5;
+}
+
+.page-size-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.page-size-select {
+    appearance: none;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 0.35rem 1.8rem 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+}
+
+.page-size-select:hover, .page-size-select:focus {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.page-size-icon {
+    position: absolute;
+    right: 0.6rem;
+    pointer-events: none;
+    color: var(--text-muted);
+}
+
 /* ── Header ── */
 .app-header {
     display: flex;
@@ -208,6 +304,7 @@ body {
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(128, 128, 128, 0.2) transparent;
+    padding: 0.5rem;
 }
 
 .sidebar-list::-webkit-scrollbar {
