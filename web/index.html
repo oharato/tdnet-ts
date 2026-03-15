@@ -4,20 +4,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎁 株主優待 新着情報 - TDnet Viewer</title>
+    <title>📰 適時開示情報 - TDnet Viewer</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/line-awesome@1.3.0/dist/line-awesome/css/line-awesome.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/line-seed@1.0.0/dist/line-seed.css">
+    <link rel="preload" as="style" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/yakuhanjp@3.4.1/dist/css/yakuhanjp.min.css">
+    <link rel="stylesheet" href="https://seed.line.me/index_jp.html">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@line/seed-jp@1.0.0/dist/seed-jp.css">
-    <link rel="alternate" type="application/rss+xml" title="株主優待 新着情報" href="feed.xml">
+    <link rel="alternate" type="application/rss+xml" title="適時開示情報" href="feed.xml">
     <link rel="stylesheet" href="style.css">
 </head>
 
-<body x-data="yutaiApp()" :data-theme="theme">
+<body x-data="tdnetApp()" :data-theme="theme">
 
     <!-- ヘッダー -->
     <header class="app-header">
-        <h1>🎁 株主優待 新着情報</h1>
+        <h1>📰 適時開示情報</h1>
         <div class="header-right">
+            <button class="filter-toggle" :class="{ 'active': filterYutai }" @click="filterYutai = !filterYutai">
+               🎁 優待のみ
+            </button>
             <span class="header-meta" x-text="filteredItems.length + ' / ' + items.length + ' 件'"></span>
             <a href="feed.xml" class="theme-toggle" title="RSS フィード" target="_blank" rel="noopener noreferrer">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -131,10 +138,11 @@
     </div>
 
     <script>
-        function yutaiApp() {
+        function tdnetApp() {
             return {
                 items: [],
                 searchQuery: '',
+                filterYutai: true, // デフォルトで優待のみ表示
                 loading: true,
                 selected: null,
                 theme: localStorage.getItem('theme') || 'dark',
@@ -151,27 +159,39 @@
                 async fetchData() {
                     this.loading = true;
                     try {
-                        const res = await fetch('yutai.json');
+                        const res = await fetch('export.json');
                         if (!res.ok) throw new Error('Failed to fetch data');
                         const data = await res.json();
                         this.items = data;
-                        if (this.items.length > 0) this.selected = this.items[0];
+                        if (this.filteredItems.length > 0) this.selected = this.filteredItems[0];
                     } catch (e) {
-                        console.error('Failed to load yutai.json', e);
+                        console.error('Failed to load export.json', e);
                     } finally {
                         this.loading = false;
                     }
                 },
 
                 get filteredItems() {
-                    if (!this.searchQuery.trim()) return this.items;
-                    const q = this.searchQuery.toLowerCase().trim();
-                    return this.items.filter(item => {
-                        return item.companyName.toLowerCase().includes(q) ||
-                            item.title.toLowerCase().includes(q) ||
-                            item.ticker.includes(q) ||
-                            (item.content || '').toLowerCase().includes(q);
-                    });
+                    let result = this.items;
+                    
+                    if (this.filterYutai) {
+                        result = result.filter(item => 
+                            item.title.includes('優待') || 
+                            (item.content || '').includes('優待')
+                        );
+                    }
+
+                    if (this.searchQuery.trim()) {
+                        const q = this.searchQuery.toLowerCase().trim();
+                        result = result.filter(item => {
+                            return item.companyName.toLowerCase().includes(q) ||
+                                item.title.toLowerCase().includes(q) ||
+                                item.ticker.includes(q) ||
+                                (item.content || '').toLowerCase().includes(q);
+                        });
+                    }
+                    
+                    return result;
                 },
 
                 formatDate(dateStr) {
@@ -188,10 +208,24 @@
                         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
                         .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
                     let html = esc(text).replace(/\n/g, '<br/>');
-                    if (!this.searchQuery.trim()) return html;
+                    
+                    // ハイライトするキーワード（検索クエリまたは固定キーワード）
+                    const queries = [];
+                    if (this.filterYutai) queries.push('優待');
+                    if (this.searchQuery.trim()) queries.push(this.searchQuery.trim());
+                    
+                    if (queries.length === 0) return html;
+                    
                     try {
-                        const q = this.searchQuery.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        return html.replace(new RegExp(`(${q})`, 'gi'), '<mark>$1</mark>');
+                        queries.forEach(query => {
+                            const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            // Ensure we don't double-highlight by using a temporary marker if needed, 
+                            // but for simplicity we'll just run them sequentially. 
+                            // Using a distinct class or style for 'mark' could avoid overlap issues, 
+                            // but basic replace works for simple cases.
+                            html = html.replace(new RegExp(`(${q})`, 'gi'), '<mark>$1</mark>');
+                        });
+                        return html;
                     } catch { return html; }
                 }
             }

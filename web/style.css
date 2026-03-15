@@ -89,25 +89,53 @@ body {
 }
 
 .header-meta {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
+    font-weight: 500;
+}
+
+.filter-toggle {
+    background: transparent;
+    border: 1px solid var(--card-border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.85rem;
     font-weight: 600;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.filter-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--active-bg);
+}
+
+.filter-toggle.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
 }
 
 /* ── Theme Toggle ── */
 .theme-toggle {
     background: none;
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    padding: 0.35rem 0.5rem;
+    border: none;
+    color: var(--text-muted);
     cursor: pointer;
-    color: var(--text-secondary);
+    font-size: 1.2rem;
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
     transition: all 0.2s;
-    font-size: 1.1rem;
-    line-height: 1;
 }
 
 .theme-toggle:hover {
