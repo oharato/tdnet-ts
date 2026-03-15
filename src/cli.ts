@@ -191,6 +191,7 @@ Examples:
         process.exit(1);
     } finally {
         manager.close();
+        process.exit(0);
     }
 }
 

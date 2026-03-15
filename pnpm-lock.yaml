@@ -11,6 +11,9 @@ importers:
       '@google/genai':
         specifier: ^1.42.0
         version: 1.42.0
+      '@oharato/pdf2md-ts':
+        specifier: ^0.1.1
+        version: 0.1.1
       '@opendataloader/pdf':
         specifier: ^1.10.1
         version: 1.10.1
@@ -20,9 +23,6 @@ importers:
       llama-parse:
         specifier: ^0.1.0
         version: 0.1.0
-      pdf2md-ts:
-        specifier: link:../pdf2md-ts
-        version: link:../pdf2md-ts
     devDependencies:
       '@opendocsg/pdf2md':
         specifier: ^0.2.4
@@ -292,6 +292,10 @@ packages:
   '@napi-rs/canvas@0.1.96':
     resolution: {integrity: sha512-6NNmNxvoJKeucVjxaaRUt3La2i5jShgiAbaY3G/72s1Vp3U06XPrAIxkAjBxpDcamEn/t+WJ4OOlGmvILo4/Ew==}
     engines: {node: '>= 10'}
+
+  '@oharato/pdf2md-ts@0.1.1':
+    resolution: {integrity: sha512-wZvOfUSj0yqgZqjRmRusDKgUOOpBW9RybU+FbqE46Gr9GUMRTZxXo7Aski1FzX+ZsF7TvaNuCi5y4KErbTiNGw==}
+    engines: {node: '>=20'}
 
   '@opendataloader/pdf@1.10.1':
     resolution: {integrity: sha512-jqpG2CsJ06n5PorBTW2IZ9e4xDrbeKpic+/dA4MBA05oFbONQ521X3Tc6F+cENf4SNePs2IPuAI5bToJkGBABQ==}
@@ -922,6 +926,10 @@ packages:
     bundledDependencies:
       - '@xmldom/xmldom'
 
+  pdfjs-dist@4.10.38:
+    resolution: {integrity: sha512-/Y3fcFrXEAsMjJXeL9J8+ZG9U01LbuWaYypvDW2ycW1jL269L3js3DVBjDJ0Up9Np1uqDXsDrRihHANhZOlwdQ==}
+    engines: {node: '>=20'}
+
   pdfreader@3.0.8:
     resolution: {integrity: sha512-95X/7bIYfetvu2J12i1MwPIqMo6niWn2fcZU64UJh7agV7/tKNOhp01z7WVAcblpY+bosvwIZG18Pku9VpMulQ==}
     engines: {node: '>=14'}
@@ -940,6 +948,12 @@ packages:
   protobufjs@7.5.4:
     resolution: {integrity: sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg==}
     engines: {node: '>=12.0.0'}
+
+  quickselect@3.0.0:
+    resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
+
+  rbush@4.0.1:
+    resolution: {integrity: sha512-IP0UpfeWQujYC8Jg162rMNc01Rf0gWMMAb2Uxus/Q0qOFw4lCcq6ZnQEZwUoJqWyUGJ9th7JjwI4yIWo+uvoAQ==}
 
   retry@0.13.1:
     resolution: {integrity: sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg==}
@@ -1286,6 +1300,11 @@ snapshots:
       '@napi-rs/canvas-win32-arm64-msvc': 0.1.96
       '@napi-rs/canvas-win32-x64-msvc': 0.1.96
     optional: true
+
+  '@oharato/pdf2md-ts@0.1.1':
+    dependencies:
+      pdfjs-dist: 4.10.38
+      rbush: 4.0.1
 
   '@opendataloader/pdf@1.10.1':
     dependencies:
@@ -1817,6 +1836,10 @@ snapshots:
 
   pdf2json@3.1.4: {}
 
+  pdfjs-dist@4.10.38:
+    optionalDependencies:
+      '@napi-rs/canvas': 0.1.96
+
   pdfreader@3.0.8:
     dependencies:
       pdf2json: 3.1.4
@@ -1845,6 +1868,12 @@ snapshots:
       '@protobufjs/utf8': 1.1.0
       '@types/node': 25.3.0
       long: 5.3.2
+
+  quickselect@3.0.0: {}
+
+  rbush@4.0.1:
+    dependencies:
+      quickselect: 3.0.0
 
   retry@0.13.1: {}
 

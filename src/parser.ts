@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { extractTablesFromPdf } from 'pdf2md-ts';
+import { extractTablesFromPdf } from '@oharato/pdf2md-ts';
 
 /**
  * PdfParser class using pdf2md-ts for PDF to Markdown conversion.
