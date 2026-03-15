@@ -65,11 +65,6 @@ async function main() {
 
             case 'search': {
                 const keyword = positionals[1] ? String(positionals[1]) : undefined;
-                if (!keyword && !values.title && !values.ticker) {
-                    console.error('Keyword, --title, or --ticker is required for search command.');
-                    console.error('Usage: tdnet-ts search [keyword] [options]');
-                    process.exit(1);
-                }
 
                 const limit = values.limit ? parseInt(String(values.limit), 10) : 100;
 
@@ -115,7 +110,7 @@ async function main() {
                     break;
                 }
 
-                const displayKeyword = keyword || (values.title ? `title:${values.title}` : `ticker:${values.ticker}`);
+                const displayKeyword = keyword || (values.title ? `title:${values.title}` : (values.ticker ? `ticker:${values.ticker}` : 'all'));
                 console.log(`Found ${results.length} records matching "${displayKeyword}":\n`);
                 for (const doc of results) {
                     console.log(`\n[${doc.publishedAt}] ${doc.ticker} ${doc.companyName}`);
@@ -165,7 +160,7 @@ Usage: tdnet-ts <command> [options]
 
 Commands:
   sync       Fetch latest disclosures and sync to DB. Parses PDF to markdown.
-  search     Search the SQLite DB for given keyword.
+  search     Search the SQLite DB for given keyword. (keyword is optional)
 
 Options:
   --limit, -l   (sync) Number of items to fetch. (search) Max number of results (default: 100)
@@ -182,6 +177,7 @@ Options:
 Examples:
   tdnet-ts sync --limit 10
   tdnet-ts sync --date 20231001 --limit 50
+  tdnet-ts search                # Search all (up to limit)
   tdnet-ts search "決算"
   tdnet-ts search "決算" --json
   tdnet-ts search "決算" --ticker 4875

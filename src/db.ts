@@ -20,17 +20,24 @@ export class DbClient {
         company_name TEXT NOT NULL,
         title TEXT NOT NULL,
         content TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     `);
+    // 後からカラムを追加する場合の対応（既存DB用）
+    try {
+      this.db.exec(`ALTER TABLE tdnet_documents ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      /* ignore if already exists */
+    }
   }
 
   public insertDocument(doc: TdnetDocument) {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO tdnet_documents (
-        id, document_url, published_at, ticker, company_name, title, content, created_at
+        id, document_url, published_at, ticker, company_name, title, content, retry_count, created_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `);
 
@@ -42,6 +49,7 @@ export class DbClient {
       doc.companyName,
       doc.title,
       doc.content || null,
+      doc.retryCount,
       doc.createdAt
     );
   }
@@ -50,7 +58,7 @@ export class DbClient {
     const stmt = this.db.prepare(`
       SELECT * FROM tdnet_documents WHERE id = ?
     `);
-    const row = stmt.get(id) as Record<string, string> | undefined;
+    const row = stmt.get(id) as Record<string, any> | undefined;
     if (!row) return undefined;
 
     return {
@@ -61,6 +69,7 @@ export class DbClient {
       title: row.title,
       documentUrl: row.document_url,
       content: row.content,
+      retryCount: Number(row.retry_count || 0),
       createdAt: row.created_at,
     };
   }
@@ -85,12 +94,10 @@ export class DbClient {
     }
     if (options?.startDate) {
       sql += ` AND published_at >= ?`;
-      // Date string like "2023-01-01" will be compared lexicographically with ISO8601 string like "2023-01-01T..."
       params.push(options.startDate);
     }
     if (options?.endDate) {
       sql += ` AND published_at <= ?`;
-      // Append "T23:59:59.999Z" to make it inclusive if user passed "2023-01-31"
       const endDateFull = options.endDate.length <= 10 ? `${options.endDate}T23:59:59.999Z` : options.endDate;
       params.push(endDateFull);
     }
@@ -103,7 +110,7 @@ export class DbClient {
     }
 
     const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as Record<string, string>[];
+    const rows = stmt.all(...params) as Record<string, any>[];
 
     return rows.map(row => ({
       id: String(row.id),
@@ -113,6 +120,7 @@ export class DbClient {
       title: row.title,
       documentUrl: row.document_url,
       content: row.content,
+      retryCount: Number(row.retry_count || 0),
       createdAt: row.created_at,
     }));
   }
@@ -121,7 +129,7 @@ export class DbClient {
     const stmt = this.db.prepare(`
       SELECT * FROM tdnet_documents ORDER BY published_at DESC LIMIT ?
     `);
-    const rows = stmt.all(limit) as Record<string, string>[];
+    const rows = stmt.all(limit) as Record<string, any>[];
     return rows.map(row => ({
       id: String(row.id),
       publishedAt: row.published_at,
@@ -130,6 +138,7 @@ export class DbClient {
       title: row.title,
       documentUrl: row.document_url,
       content: row.content,
+      retryCount: Number(row.retry_count || 0),
       createdAt: row.created_at,
     }));
   }

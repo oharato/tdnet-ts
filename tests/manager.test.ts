@@ -89,7 +89,7 @@ describe('TdnetManager', () => {
         expect(mockFetchRecent).toHaveBeenCalledWith(1);
 
         // downloadAndParseがリダイレクト除去後のURLで呼ばれたことを確認
-        expect(mockDownloadAndParse).toHaveBeenCalledWith('https://example.com/test.pdf');
+        expect(mockDownloadAndParse).toHaveBeenCalledWith('https://example.com/test.pdf', expect.any(Number));
 
         // DBへの保存(insertDocument)が意図したフォーマットで行われているか確認
         expect(mockInsertDocument).toHaveBeenCalledTimes(1);

@@ -1,65 +1,42 @@
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-
+import { extractTablesFromPdf } from 'pdf2md-ts';
 
 /**
- * PdfParser class using IBM Docling for PDF to Markdown conversion.
- * Docling provides advanced layout analysis for tables, headers, and figures.
+ * PdfParser class using pdf2md-ts for PDF to Markdown conversion.
  */
 export class PdfParser {
     /**
-     * PDFのバイナリデータを受け取り、Markdown形式のテキストに変換して返す (Docling版)
-     * @param pdfBuffer PDFのバイナリデータ
-     * @returns Markdown形式の文字列
+     * PDFのバイナリデータを受け取り、Markdown形式のテキストに変換して返す (pdf2md-ts版)
      */
-    public async parsePdfToMarkdown(pdfBuffer: ArrayBuffer | Uint8Array | Buffer): Promise<string> {
+    public async parsePdfToMarkdown(pdfBuffer: ArrayBuffer | Uint8Array | Buffer, timeoutMs: number = 30 * 60 * 1000): Promise<string> {
         const buffer = pdfBuffer instanceof Buffer ? pdfBuffer :
             pdfBuffer instanceof Uint8Array ? Buffer.from(pdfBuffer) :
                 Buffer.from(pdfBuffer);
 
-        // 一時ディレクトリとファイルを作成
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docling-'));
+        // 一時PDFファイルを作成してpdf2md-tsに渡す
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf2md-'));
         const inputPath = path.join(tempDir, 'document.pdf');
 
         try {
             fs.writeFileSync(inputPath, buffer);
 
-            // Docling (IBM) の CLI を呼び出す
-            // コマンドは環境によって docling-convert または docling の可能性があるため、
-            // 一般的に推奨される docling コマンドを試みる。
-            // また、Python モジュールとして直接呼び出す (-m docling.cli.conv) 方法も一般的。
+            console.error(`  [debug] extracting tables from PDF (${buffer.length} bytes)...`);
 
-            // docling source --output output_dir
-            // デフォルトで Markdown に変換される。日本語の精度を上げるため ja を指定。
-            try {
-                execSync(`docling ${inputPath} --output ${tempDir} --ocr-lang ja`, { stdio: 'inherit' });
-            } catch (e: any) {
-                throw new Error(`Docling (IBM) の実行に失敗しました。docling が正しくインストールされているか、パスが通っているか確認してください。\n${e.message}`);
-            }
+            const result = await Promise.race([
+                extractTablesFromPdf(inputPath),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('PDF変換がタイムアウトしました')), timeoutMs)
+                )
+            ]);
 
-            // 変換された Markdown ファイルを検索
-            const outputPath = path.join(tempDir, 'document.md');
-            let markdown = '';
-            if (fs.existsSync(outputPath)) {
-                markdown = fs.readFileSync(outputPath, 'utf-8');
-            } else {
-                // 出力ディレクトリ内の .md ファイルを探す
-                const files = fs.readdirSync(tempDir);
-                const mdFile = files.find(f => f.endsWith('.md'));
-                if (mdFile) {
-                    markdown = fs.readFileSync(path.join(tempDir, mdFile), 'utf-8');
-                }
-            }
+            let processed = this.postProcess(result.markdown);
 
-            if (!markdown) {
-                throw new Error('Docling による変換後の Markdown ファイルが見つかりませんでした。');
-            }
-
-            return this.postProcessDocling(markdown);
+            return processed;
+        } catch (e: any) {
+            throw new Error(`PDF変換処理に失敗しました: ${e.message}`);
         } finally {
-            // 一時ファイルの削除
             try {
                 fs.rmSync(tempDir, { recursive: true, force: true });
             } catch (err) {
@@ -68,23 +45,20 @@ export class PdfParser {
         }
     }
 
-    private postProcessDocling(markdown: string): string {
+    private postProcess(markdown: string): string {
         let res = markdown;
 
-        // 1. 画像データの除去 (Doclingが埋め込むbase64画像の削除)
-        res = res.replace(/!\[(?:Image)\]\(data:image\/[^;]+;base64,[^)]+\)/gi, '');
-        // altがないパターンも念の為
-        res = res.replace(/!\[\]\(data:image\/[^;]+;base64,[^)]+\)/gi, '');
+        // base64埋め込み画像を除去
+        res = res.replace(/!\[[^\]]*\]\(data:[^)]+\)/g, '');
 
-        // 2. 全角英数字・記号を半角に変換 (統一感のため)
-        res = res.replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-        res = res.replace(/[Ａ-Ｚａ-ｚ]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-        res = res.replace(/[（）]/g, (s) => s === '（' ? '(' : ')');
-        res = res.replace(/．/g, '.');
-        res = res.replace(/－/g, '-');
-        res = res.replace(/％/g, '%');
-        res = res.replace(/：/g, ':');
-        res = res.replace(/～/g, '~');
+        // <br> タグをセル内で結合（表セル内の改行除去）
+        res = res.replace(/<br\s*\/?>/gi, '');
+
+        // 全角英数字・記号 (U+FF01–U+FF5E) → 半角, 全角スペース → 半角スペース
+        res = res.replace(/[\uFF01-\uFF5E]/g, c =>
+            String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
+        );
+        res = res.replace(/\u3000/g, ' ');
 
         // 余分な連続改行を2つまでに制限
         res = res.replace(/\n{3,}/g, '\n\n').trim();
@@ -94,16 +68,15 @@ export class PdfParser {
 
     /**
      * 指定されたURLからPDFをダウンロードしてMarkdownに変換する
-     * @param url PDFのURL
-     * @returns Markdown形式の文字列とバイナリデータ
      */
-    public async downloadAndParse(url: string): Promise<{ markdown: string, buffer: ArrayBuffer }> {
-        const response = await fetch(url);
+    public async downloadAndParse(url: string, timeoutMs: number = 30 * 60 * 1000): Promise<{ markdown: string; buffer: ArrayBuffer }> {
+        console.log(`  -> Downloading PDF from ${url} (timeout: ${timeoutMs}ms)`);
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
         if (!response.ok) {
             throw new Error(`PDFのダウンロードに失敗しました: ${response.status} ${response.statusText}`);
         }
         const arrayBuffer = await response.arrayBuffer();
-        const markdown = await this.parsePdfToMarkdown(arrayBuffer);
+        const markdown = await this.parsePdfToMarkdown(arrayBuffer, timeoutMs);
         return { markdown, buffer: arrayBuffer };
     }
 }

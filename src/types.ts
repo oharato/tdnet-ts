@@ -6,6 +6,7 @@ export interface TdnetDocument {
     title: string;          // 件名
     documentUrl: string;    // PDFのURL
     content: string | null; // 変換されたMarkdown本文
+    retryCount: number;     // 解析失敗時のリトライ回数
     createdAt: string;      // レコード作成日時
 }
 

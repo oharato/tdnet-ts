@@ -14,6 +14,7 @@ export interface SyncOptions {
     date?: string;            // YYYY-MM-DD (指定がなければ直近)
     downloadDelayMs?: number; // PDFダウンロード間の待機時間(デフォルト1000ms)
     savePdfDir?: string;      // PDFを保存するディレクトリ。指定された場合のみ保存。
+    concurrency?: number;     // 並列処理数 (デフォルト2)
 }
 
 /**
@@ -37,6 +38,7 @@ export class TdnetManager {
     public async sync(options: SyncOptions = {}): Promise<void> {
         const limit = options.limit || 100;
         const downloadDelayMs = options.downloadDelayMs ?? 1000;
+        const concurrency = options.concurrency ?? 2;
 
         let apiData;
         if (options.date) {
@@ -50,112 +52,125 @@ export class TdnetManager {
         const items = apiData.items || [];
         console.log(`Found ${items.length} records.`);
 
-        let progress = '';
-        let processed = 0;
-        const flushProgress = () => {
-            if (progress) {
-                console.log(`  [${processed}/${items.length}] ${progress}`);
-                progress = '';
-            }
-        };
+        // ラウンドごとのタイムアウト設定(ミリ秒)
+        const rounds = [
+            { timeoutMs: 3 * 60 * 1000, desc: '3分' },
+            { timeoutMs: 10 * 60 * 1000, desc: '10分' },
+            { timeoutMs: 30 * 60 * 1000, desc: '30分' }
+        ];
 
-        for (const dataItem of items) {
-            const item = dataItem.Tdnet;
-            if (!item) continue;
+        // 1. 各アイテムの初期状態（DBから既存情報を取得）を確認
+        const queue = items
+            .filter((d: any) => d.Tdnet != null)
+            .map((dataItem: any) => {
+                const item = dataItem.Tdnet;
+                const rawUrl = item.document_url || '';
+                const cleanUrl = rawUrl.startsWith('https://webapi.yanoshin.jp/rd.php?')
+                    ? rawUrl.replace('https://webapi.yanoshin.jp/rd.php?', '')
+                    : rawUrl;
+                item.document_url = cleanUrl;
+                const docId = path.basename(item.document_url).replace(/\.pdf$/i, '') || item.id;
 
-            // URLから余分なリダイレクト部分を除去
-            const rawUrl = item.document_url || '';
-            const cleanUrl = rawUrl.startsWith('https://webapi.yanoshin.jp/rd.php?')
-                ? rawUrl.replace('https://webapi.yanoshin.jp/rd.php?', '')
-                : rawUrl;
-            item.document_url = cleanUrl;
+                const existing = this.db.getDocument(String(docId));
+                return {
+                    dataItem,
+                    docId,
+                    existing,
+                    processed: existing ? (existing.content !== null) : false,
+                    retryCount: existing ? existing.retryCount : 0
+                };
+            });
 
-            // URLからドキュメントIDを抽出 (e.g. 140120260220565990.pdf -> 140120260220565990)
-            const urlBasename = path.basename(item.document_url).replace(/\.pdf$/i, '');
-            const docId = urlBasename || item.id;
-            // 既にDBにあるかチェックし、あればスキップ (idで判定)
-            const existing = this.db.getDocument(String(docId));
-            processed++;
-            if (existing) {
-                progress += '.';
-                if (processed % 50 === 0) flushProgress();
-                continue;
-            }
+        for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
+            const roundItems = queue.filter(q => !q.processed && q.retryCount <= roundIdx);
+            if (roundItems.length === 0) continue;
 
-            const MAX_RETRIES = 3;
-            let success = false;
-            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            const round = rounds[roundIdx];
+            console.log(`\n=== Round ${roundIdx + 1}: Timeout ${round.desc} (Target: ${roundItems.length} items, Concurrency: ${concurrency}) ===`);
+
+            // 並列処理のためのワーカー関数
+            const processItem = async (q: typeof queue[0], index: number) => {
+                const item = q.dataItem.Tdnet;
+                console.log(`\n[Round ${roundIdx + 1}] Processing (${index}/${roundItems.length}): ${item.company_name} - ${item.title}`);
+
                 try {
                     let content = null;
                     if (item.document_url && item.document_url.endsWith('.pdf')) {
-                        // NOTE: ダウンロード失敗・変換失敗でもDBには記録を残す（mdなしで）ようにした方が堅牢
-                        const parsed = await this.parser.downloadAndParse(item.document_url);
+                        const parsed = await this.parser.downloadAndParse(item.document_url, round.timeoutMs);
                         content = parsed.markdown;
 
-                        if (options.savePdfDir) {
+                        if (options.savePdfDir && parsed.buffer) {
                             try {
                                 if (!fs.existsSync(options.savePdfDir)) {
                                     fs.mkdirSync(options.savePdfDir, { recursive: true });
                                 }
-                                // ファイル名をIDベースにする
-                                const fileName = `${docId}.pdf`;
+                                const fileName = `${q.docId}.pdf`;
                                 const filePath = path.join(options.savePdfDir, fileName);
-                                if (fs.existsSync(filePath)) {
-                                    // 既に存在
-                                } else {
+                                if (!fs.existsSync(filePath)) {
                                     fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
-                                    progress += 'P';
                                 }
                             } catch (writeErr: any) {
-                                console.error(`  -> Failed to save local PDF: ${writeErr.message}`);
+                                console.error(`  -> Failed to save local PDF for ${q.docId}: ${writeErr.message}`);
                             }
                         }
                     }
 
-                    // 末尾の0を除去して4桁のtickerにする (一部の例外がある場合も考慮してendsWith判定)
-                    const ticker = item.company_code.endsWith('0')
-                        ? item.company_code.slice(0, -1)
-                        : item.company_code;
-
-                    // pubdate（例: "2026-02-20 20:00:00"）をJST(+09:00)として解釈し、UTC ISO形式(Z)に変換
+                    const ticker = item.company_code.endsWith('0') ? item.company_code.slice(0, -1) : item.company_code;
                     const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
                     const publishedAt = new Date(jstDateStr).toISOString();
 
                     const doc: TdnetDocument = {
-                        id: docId,
+                        id: q.docId,
                         publishedAt,
                         ticker,
                         companyName: item.company_name,
                         title: item.title,
-                        documentUrl: item.document_url, // URLはそのまま保存する
+                        documentUrl: item.document_url,
                         content,
-                        createdAt: new Date().toISOString()
+                        retryCount: q.retryCount,
+                        createdAt: q.existing?.createdAt || new Date().toISOString()
                     };
 
                     this.db.insertDocument(doc);
-                    progress += '*';
-                    success = true;
-                    break; // Success! Exit retry loop
+                    q.processed = true;
+                    console.log(`  -> [${q.docId}] Successfully synced.`);
 
                 } catch (e: any) {
-                    if (attempt < MAX_RETRIES) {
-                        // console.log(`  -> Retry ${attempt}/${MAX_RETRIES} for ${docId}`);
-                        await delay(1000 * attempt); // Fixed delay + backoff
-                    } else {
-                        progress += '!';
-                        console.error(`\n  Error: ${item.document_url}: ${(e as Error).message}`);
-                    }
+                    console.log(`  -> [${q.docId}] Error: ${e.message}`);
+                    q.retryCount++;
+
+                    const ticker = item.company_code.endsWith('0') ? item.company_code.slice(0, -1) : item.company_code;
+                    const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
+                    const publishedAt = new Date(jstDateStr).toISOString();
+
+                    const doc: TdnetDocument = {
+                        id: q.docId,
+                        publishedAt,
+                        ticker,
+                        companyName: item.company_name,
+                        title: item.title,
+                        documentUrl: item.document_url,
+                        content: null,
+                        retryCount: q.retryCount,
+                        createdAt: q.existing?.createdAt || new Date().toISOString()
+                    };
+                    this.db.insertDocument(doc);
+                }
+            };
+
+            // 並列実行（リミッター付き）
+            for (let i = 0; i < roundItems.length; i += concurrency) {
+                const chunk = roundItems.slice(i, i + concurrency);
+                await Promise.all(chunk.map((item, j) => processItem(item, i + j + 1)));
+
+                // チャンク間に少しディレイを入れる（レートリミット対策）
+                if (i + concurrency < roundItems.length) {
+                    await delay(downloadDelayMs);
                 }
             }
-
-            if (processed % 50 === 0) flushProgress();
-
-            // レートリミット対策のためのディレイ
-            await delay(downloadDelayMs);
         }
 
-        flushProgress();
-        console.log('Sync complete.');
+        console.log('\nSync complete.');
     }
 
     /**
