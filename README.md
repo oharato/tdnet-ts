@@ -4,11 +4,14 @@ TDnet（東京証券取引所適時開示情報）APIから開示情報および
 
 ## 特徴
 - **[ヤノシン TDnet API](https://webapi.yanoshin.jp/tdnet/)** に対応し、指定日や直近の適時開示情報を取得
-- PDF内テキストを `@opendocsg/pdf2md` を利用してMarkdownとして抽出・保存
+- PDF内テキストを `@oharato/pdf2md-ts` を利用してMarkdownとして抽出・保存
 - `--save-pdf` オプションでダウンロードしたPDF原本もローカルに保存可能
 - Node.js v24 組み込みの `node:sqlite` によるデータベース管理
 - コマンドラインツール(CLI)と、アプリケーションから直接利用できるライブラリ(ESM/CJS)の両方を提供
-- **モダンな Web ビューアー**: 株主優待情報の閲覧に特化した2カラムレイアウト（ダーク/ライトモード対応）
+- **モダンな Web ビューアー**: 全適時開示情報を2カラムレイアウトで閲覧（ダーク/ライトモード対応）
+- **クライアントサイドフィルタリング**: 企業名・タイトル・本文・銘柄コードでのインクリメンタル検索、「🎁 優待のみ」ワンクリック絞り込み
+- **ページネーション**: 1ページあたりの表示件数を 20/50/100 件から選択可能
+- **Markdownレンダリング**: 本文をMarkdown/プレーンテキストで切り替え表示
 - **RSS フィード生成**: 取得したデータを RSS 形式で出力し、各種リーダーでの購読が可能
 - **自動化対応**: GitHub Actions による定期実行と自動デプロイをサポート
 
@@ -57,7 +60,10 @@ npx tdnet-ts sync --save-pdf web/pdfs
 ローカルのSQLiteに保存されたデータをキーワードで検索します。開示情報の「タイトル」「会社名」「Markdown変換された本文」に対して部分一致検索を行います。
 
 ```bash
-# キーワードのみで検索
+# キーワードを指定せずに全件取得
+npx tdnet-ts search
+
+# キーワードで検索
 npx tdnet-ts search "決算"
 
 # 特定の銘柄コードで絞り込み
@@ -82,15 +88,15 @@ npx tdnet-ts search "決算" --json
 
 ---
 
-### 3. Webビューアー (優待一覧)
+### 3. Webビューアー
 
-ダウンロードした優待関連の開示情報をブラウザで一覧表示するWebビューアーが付属しています。
+ダウンロードした適時開示情報をブラウザで閲覧できるWebビューアーが付属しています。
 
 ```bash
-# 1. PDFをローカルに保存しながらデータを同期
-npx tdnet-ts sync --save-pdf web/pdfs
+# 1. データを取得し、PDFをローカルに保存しながら同期
+#    (web:exportが内部でbuild + syncを実行するため、個別実行は不要)
 
-# 2. 優待関連のデータをJSONとして出力
+# 2. 全データをJSONとして出力し、RSSフィードを生成する
 pnpm run web:export
 
 # 3. Vite開発サーバーを起動してブラウザで確認
@@ -98,14 +104,28 @@ pnpm run web:dev
 # → http://localhost:5173/ でアクセス
 ```
 
-Webビューアーでは以下の機能を提供します：
-- **2カラムレイアウト**: 左側に一覧、右側に選択した情報の詳細を表示するモダンなUI
-- **テーマ切り替え**: ダークモードとライトモードの切り替えに対応（状態はブラウザに保存）
-- **インクリメンタル検索**: 企業名・タイトル・本文・銘柄コードでの瞬時のフィルタリング
-- **RSS フィード**: `web/feed.xml` が生成され、RSSリーダーでの購読が可能
-- **コンテンツ閲覧**: PDFから変換されたMarkdown本文を直接ブラウザで閲覧可能
-- **ブラウザ内PDF表示**: 1クリックでローカルのPDF原本を表示
-- **スマホ対応**: レスポンシブ設計により、モバイル環境でも快適に閲覧可能
+#### Webビューアーの機能一覧
+
+| 機能 | 説明 |
+|------|------|
+| **2カラムレイアウト** | 左側に一覧、右側に詳細を表示するモダンなUI |
+| **テーマ切り替え** | ダーク/ライトモードの切り替え（状態はブラウザに保存） |
+| **インクリメンタル検索** | 企業名・タイトル・本文・銘柄コードでの瞬時フィルタリング |
+| **優待フィルター** | 「🎁 優待のみ」ボタンで株主優待関連の開示に絞り込み（デフォルトON） |
+| **ページネーション** | 1ページあたりの表示件数を 20/50/100 件から選択可能 |
+| **Markdownレンダリング** | 本文を Text / Markdown 切り替えボタンでHTMLレンダリング |
+| **PDF閲覧** | ローカルに保存したPDF原本を1クリックで表示 |
+| **RSS フィード** | `web/feed.xml` を生成、RSSリーダーでの購読が可能 |
+| **スマホ対応** | レスポンシブ設計によりモバイルでも快適に閲覧 |
+
+#### `web:export` の内部処理
+
+`pnpm run web:export` は以下の処理を順番に行います：
+
+1. `pnpm build` — TypeScriptをビルド
+2. `node dist/cli.js sync --save-pdf web/pdfs -l <LIMIT>` — 最新1000件のデータを取得しPDFを `web/pdfs/` に保存
+3. `node dist/cli.js search --json -c -l <LIMIT> > web/export.json` — 全データを本文付きJSONで出力
+4. `node scripts/generate-rss.mjs` — `web/feed.xml` を生成
 
 ### 共通オプション
 `--db <path>` オプションをつけることで、書き込み/読み込み先のSQLiteデータベースパスを指定できます。
@@ -137,8 +157,6 @@ pnpm test
 pnpm run test:watch
 ```
 
-*(※ npmレジストリに公開した場合の例です)*
-
 ### コード例
 
 ```typescript
@@ -162,21 +180,19 @@ async function main() {
     
     // 3. 結果の表示
     for (const doc of results) {
-      interface TdnetDocument {
-        id: string;             // TDnetドキュメントID (主キー、例: 140120260220565990)
-        publishedAt: string;    // 開示日時 (UTC ISO形式)
-        ticker: string;         // 銘柄コード (末尾0を除去した4桁)
-        companyName: string;    // 会社名
-        title: string;          // 件名
-        documentUrl: string;    // PDFのURL
-        content: string | null; // 変換されたMarkdown本文
-        createdAt: string;      // レコード作成日時
-      }
+      // doc は TdnetDocument 型
+      // id: string            — TDnetドキュメントID (主キー)
+      // publishedAt: string   — 開示日時 (UTC ISO形式)
+      // ticker: string        — 銘柄コード (末尾0を除去した4桁)
+      // companyName: string   — 会社名
+      // title: string         — 件名
+      // documentUrl: string   — PDFのURL
+      // content: string|null  — 変換されたMarkdown本文
+      // createdAt: string     — レコード作成日時
       console.log(`[${doc.publishedAt}] ${doc.companyName} (${doc.ticker})`);
       console.log(`ID: ${doc.id}`);
       console.log(`Title: ${doc.title}`);
       console.log(`URL: ${doc.documentUrl}`);
-      // console.log(doc.content); // 抽出されたMarkdown本文
     }
 
   } catch (error) {
@@ -194,10 +210,15 @@ main();
 
 GitHub Actions を利用して、定期的なデータの更新と GitHub Pages へのデプロイが可能です。
 
-### 設定方法
-1. GitHub リポジトリの `Settings -> Pages` で、Source を **GitHub Actions** に変更します。
-2. `.github/workflows/deploy-pages.yml` に定義されたワークフローが、平日の JST 18:00 に自動実行されます。
-3. 同時に `tdnet.sqlite` と `web/pdfs/` がキャッシュされ、差分のみを効率的に処理します。
+### ワークフローのトリガー
+`.github/workflows/deploy-pages.yml` は以下のタイミングで自動実行されます：
+- **`main` / `master` ブランチへの Push 時**
+- **平日の JST 18:00（UTC 09:00）** に定期実行
+- **手動実行**: GitHub の Actions タブから `workflow_dispatch` で随時実行可能
+
+### セットアップ手順
+1. GitHub リポジトリの `Settings → Pages` で、Source を **GitHub Actions** に変更します。
+2. `tdnet.sqlite` と `web/pdfs/` は実行間でキャッシュされ、差分のみを効率的に処理します。
 
 ## 構成・設計
 
