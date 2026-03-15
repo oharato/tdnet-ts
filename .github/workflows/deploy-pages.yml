@@ -1,6 +1,8 @@
-name: Deploy Yutai Viewer to GitHub Pages
+name: Deploy TDnet Info to GitHub Pages
 
 on:
+  push:
+    branches: ["main", "master"]
   schedule:
     # 平日 JST 18:00 (UTC 09:00) に実行
     - cron: '0 9 * * 1-5'
