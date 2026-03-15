@@ -5,15 +5,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📰 適時開示情報 - TDnet Viewer</title>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/line-awesome@1.3.0/dist/line-awesome/css/line-awesome.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/line-seed@1.0.0/dist/line-seed.css">
-    <link rel="preload" as="style" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/yakuhanjp@3.4.1/dist/css/yakuhanjp.min.css">
-    <link rel="stylesheet" href="https://seed.line.me/index_jp.html">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@line/seed-jp@1.0.0/dist/seed-jp.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/yakuhanjp@3.4.1/dist/css/yakuhanjp.min.css" rel="stylesheet">
+    <!-- LINE Seed JP Font -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@line/seed-sans-jp@1.0.0/dist/seed-sans-jp.css">
     <link rel="alternate" type="application/rss+xml" title="適時開示情報" href="feed.xml">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 
 <body x-data="tdnetApp()" :data-theme="theme">
@@ -132,31 +133,59 @@
 
                     <h3 class="detail-title" x-text="selected.title"></h3>
 
-                    <div class="detail-links">
-                        <a :href="'pdfs/' + selected.id + '.pdf'" target="_blank" rel="noopener noreferrer"
-                            class="link-btn primary">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <polyline points="14 2 14 8 20 8" />
-                            </svg>
-                            ローカル PDF
-                        </a>
-                        <a :href="selected.documentUrl" target="_blank" rel="noopener noreferrer" class="link-btn">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                <polyline points="15 3 21 3 21 9" />
-                                <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                            TDnet 元URL
-                        </a>
+                    <div class="detail-actions-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <div class="detail-links" style="margin-bottom: 0;">
+                            <a :href="'pdfs/' + selected.id + '.pdf'" target="_blank" rel="noopener noreferrer"
+                                class="link-btn primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                </svg>
+                                ローカル PDF
+                            </a>
+                            <a :href="selected.documentUrl" target="_blank" rel="noopener noreferrer" class="link-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                                TDnet 元URL
+                            </a>
+                        </div>
+                        
+                        <div class="detail-actions" x-show="selected.content" style="margin-top: 0;">
+                            <button 
+                                @click="renderMarkdown = !renderMarkdown" 
+                                :class="{'active': renderMarkdown}"
+                                class="icon-toggle-btn"
+                                title="マークダウン表示を切り替える">
+                                <!-- Toggle Markdown Icon (File Text OR Markdown-like) -->
+                                <svg x-show="!renderMarkdown" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                                    <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                                <!-- Rendered HTML Icon (Eye / Image with Text) -->
+                                <svg x-show="renderMarkdown" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                <span class="btn-label" x-text="renderMarkdown ? 'Markdown' : 'Text'"></span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="detail-content" x-show="selected.content">
-                        <div class="content-body" x-html="highlightText(selected.content || '')"></div>
+                        <!-- renderMarkdown == false (RAW) -->
+                        <div class="content-body" x-show="!renderMarkdown" x-html="highlightText(selected.content || '')"></div>
+                        <!-- renderMarkdown == true (HTML via marked) -->
+                        <div class="content-body markdown-rendered" x-show="renderMarkdown" x-html="renderHtml(selected.content || '')"></div>
                     </div>
                     <div class="detail-content no-content" x-show="!selected.content">
                         <p>本文データがありません。<code>--content</code> オプション付きでエクスポートしてください。</p>
@@ -167,11 +196,18 @@
     </div>
 
     <script>
+        // markedオプション設定（テーブル表示等をサポートするため）
+        marked.setOptions({
+            gfm: true,
+            breaks: true
+        });
+
         function tdnetApp() {
             return {
                 items: [],
                 searchQuery: '',
                 filterYutai: true, // デフォルトで優待のみ表示
+                renderMarkdown: false, // マークダウンレンダリングのオンオフ
                 loading: true,
                 selected: null,
                 theme: localStorage.getItem('theme') || 'dark',
@@ -271,6 +307,26 @@
                             // Using a distinct class or style for 'mark' could avoid overlap issues, 
                             // but basic replace works for simple cases.
                             html = html.replace(new RegExp(`(${q})`, 'gi'), '<mark>$1</mark>');
+                        });
+                        return html;
+                    } catch { return html; }
+                },
+
+                renderHtml(text) {
+                    if (!text) return '';
+                    let html = marked.parse(text);
+                    
+                    const queries = [];
+                    if (this.filterYutai) queries.push('優待');
+                    if (this.searchQuery.trim()) queries.push(this.searchQuery.trim());
+                    
+                    if (queries.length === 0) return html;
+                    
+                    try {
+                        queries.forEach(query => {
+                            const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            // <tag> の中身（属性など）を置換しないようにするため、簡易的な否定的先読みを利用
+                            html = html.replace(new RegExp(`(${q})(?![^<]*>)`, 'gi'), '<mark>$1</mark>');
                         });
                         return html;
                     } catch { return html; }

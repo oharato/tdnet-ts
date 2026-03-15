@@ -258,6 +258,7 @@ body {
     transition: background 0.3s;
 }
 
+
 .sidebar-search {
     display: flex;
     align-items: center;
@@ -384,6 +385,7 @@ body {
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     margin-bottom: 0.15rem;
@@ -608,7 +610,109 @@ body {
 }
 
 /* ── Responsive ── */
-@media (max-width: 768px) {
+/* ── Detail Buttons ── */
+.icon-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+.icon-toggle-btn:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+}
+.icon-toggle-btn.active {
+    background: var(--active-bg);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.icon-toggle-btn .btn-label {
+    font-weight: 500;
+}
+
+/* ── Markdown Content ── */
+.markdown-rendered {
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 0.9rem;
+}
+.markdown-rendered h1, .markdown-rendered h2, .markdown-rendered h3, .markdown-rendered h4 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 700;
+    color: var(--text);
+}
+.markdown-rendered h2 {
+    font-size: 1.25em;
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 0.3em;
+}
+.markdown-rendered h3 { font-size: 1.1em; }
+.markdown-rendered p { margin-bottom: 1em; }
+.markdown-rendered table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.2em;
+    font-size: 0.85rem;
+    border: 1px solid var(--text-secondary);
+}
+.markdown-rendered th,
+.markdown-rendered td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--text-secondary);
+}
+.markdown-rendered th {
+    background: var(--active-bg);
+    font-weight: 600;
+}
+.markdown-rendered tbody tr:nth-child(even) {
+    background: var(--hover-bg);
+}
+.markdown-rendered pre,
+.markdown-rendered code {
+    background: var(--hover-bg);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.markdown-rendered code {
+    padding: 0.2em 0.4em;
+    font-size: 0.85em;
+}
+.markdown-rendered pre {
+    padding: 1rem;
+    overflow-x: auto;
+    margin-bottom: 1em;
+}
+.markdown-rendered pre code {
+    padding: 0;
+    background: transparent;
+    font-size: 0.85rem;
+}
+.markdown-rendered blockquote {
+    border-left: 4px solid var(--accent);
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    background: var(--hover-bg);
+    margin: 1em 0;
+    border-radius: 0 4px 4px 0;
+}
+.markdown-rendered blockquote p:last-child { margin-bottom: 0; }
+.markdown-rendered ul,
+.markdown-rendered ol {
+    margin-bottom: 1em;
+    padding-left: 2rem;
+}
+.markdown-rendered li { margin-bottom: 0.25rem; }
+
+@media (max-width: 480px) {
     .sidebar {
         width: 100%;
         min-width: unset;
