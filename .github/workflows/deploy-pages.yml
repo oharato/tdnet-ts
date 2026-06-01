@@ -35,7 +35,7 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
 
       # PDF + DB キャッシュの復元
       - uses: actions/cache/restore@v5
