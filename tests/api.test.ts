@@ -5,7 +5,7 @@ describe('ApiClient', () => {
     let client: ApiClient;
 
     beforeEach(() => {
-        client = new ApiClient();
+        client = new ApiClient(0);
         // グローバルの fetch をモック化
         global.fetch = vi.fn();
     });
@@ -65,5 +65,34 @@ describe('ApiClient', () => {
         });
 
         await expect(client.fetchRecent(10)).rejects.toThrow('Failed to fetch from TDnet API: Internal Server Error');
+    });
+
+    it('ネットワークエラー時にリトライし、成功すること', async () => {
+        const mockResponse = { total_count: 0, items: [] };
+        (global.fetch as any)
+            .mockRejectedValueOnce(new TypeError('fetch failed'))
+            .mockResolvedValue({
+                ok: true,
+                json: async () => mockResponse,
+            });
+
+        const result = await client.fetchRecent(10);
+
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(result).toEqual(mockResponse);
+    });
+
+    it('全リトライ失敗時に例外を投げること', async () => {
+        (global.fetch as any).mockRejectedValue(new TypeError('fetch failed'));
+
+        await expect(client.fetchRecent(10)).rejects.toThrow('fetch failed');
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('TypeError以外のエラーはリトライせずに即座に投げること', async () => {
+        (global.fetch as any).mockRejectedValue(new Error('unexpected error'));
+
+        await expect(client.fetchRecent(10)).rejects.toThrow('unexpected error');
+        expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 });
