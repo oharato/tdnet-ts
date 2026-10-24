@@ -17,7 +17,8 @@
     "format": "oxfmt -w .",
     "web:export": "pnpm build && sh scripts/web-export.sh",
     "web:dev": "pnpm build && vite serve web",
-    "search:evaluate": "pnpm build && node --no-warnings scripts/evaluate-search.mjs"
+    "search:evaluate": "pnpm build && node --no-warnings scripts/evaluate-search.mjs",
+    "test:types": "tsgo -p tsconfig.consumer.json"
   },
   "keywords": [
     "tdnet",
@@ -42,5 +43,9 @@
     "@opendataloader/pdf": "^1.10.1",
     "dotenv": "^17.3.1",
     "llama-parse": "^0.1.0"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }
