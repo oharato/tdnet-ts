@@ -150,3 +150,8 @@ fetchとresponse.jsonを同じAbortControllerの30秒枠に置き、finallyでti
 ### PDF抽出worker（2026-10-24）
 
 抽出器の非キャンセル処理をNode worker_threads内に限定する。依存moduleの解決済みURLと入力パスをworkerDataで渡し、固定のESM data URLで起動する。成功本文は文字列を確認し、error/結果なしexit/timeoutを例外として扱う。finallyでタイマー解除とworker停止完了を待ち、その後にparserが一時ファイルを削除する。変換後処理とdownloadPdfの公開APIは維持。worker起動オーバーヘッドは未計測。
+
+
+### Web原本リンクの存在確認（2026-10-24）
+
+web:exportでJSON出力後にannotate-pdfsを実行し、出力先PDFのlstatによる通常ファイル/非空確認をlocalPdfAvailableとして付加する。安全でないID・symlink・欠損/読取不能は未確認(false)。JSON本文は変更せず、一時ファイルからrenameして出力を置換する。Webはtrueの時だけローカルPDFリンクを表示し、旧JSON/不明/欠損は元URLを案内する。完全性や版同一性の検証ではない。

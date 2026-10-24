@@ -749,3 +749,5 @@ body {
     .sidebar { height: 40vh; }
     .search-form { max-height: 55%; }
 }
+
+.original-unavailable { font-size: .85rem; color: var(--text-muted); }
