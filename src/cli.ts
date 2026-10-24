@@ -171,8 +171,8 @@ Options:
   --content, -c (search only) Include the full converted markdown document content
   --ticker, -t  (search only) Filter by company ticker code
   --title       (search only) Filter specifically by document title
-  --start,  -s  (search only) Filter by start date (YYYY-MM-DD)
-  --end,    -e  (search only) Filter by end date (YYYY-MM-DD)
+  --start,  -s  (search only) Filter by start date (YYYY-MM-DD, JST; or ISO timestamp)
+  --end,    -e  (search only) Filter by end date (YYYY-MM-DD, JST; or ISO timestamp)
 
 Examples:
   tdnet-ts sync --limit 10
