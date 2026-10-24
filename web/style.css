@@ -729,3 +729,23 @@ body {
         padding: 1.25rem;
     }
 }
+.search-options { padding: 0 1rem 1rem; display: grid; gap: .5rem; font-size: .85rem; }
+.search-options label { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.search-options select, .search-options input:not([type=checkbox]), .search-options button {
+    font: inherit; max-width: 100%; padding: .35rem; border: 1px solid #888; border-radius: .3rem;
+}
+.search-options p { margin: 0; line-height: 1.5; }
+.search-options [role=alert], #startup-error { color: #b45309; }
+#startup-error:empty { display: none; }
+/* Keep a scrollable result area even when advanced conditions are open. */
+.search-form { flex: 0 1 auto; min-height: 0; max-height: 60%; overflow-y: auto; }
+.search-input { min-width: 0; }
+.search-advanced summary, .search-feedback { padding: .4rem 1rem; font-size: .85rem; }
+.search-advanced summary { cursor: pointer; }
+.search-feedback p { margin: .3rem 0; }
+.search-feedback [role=alert] { color: #b45309; }
+.sidebar-list { min-height: 0; }
+@media (max-width: 480px) {
+    .sidebar { height: 40vh; }
+    .search-form { max-height: 55%; }
+}

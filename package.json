@@ -10,13 +10,13 @@
   },
   "scripts": {
     "build": "pnpm exec tsgo && pnpm postbuild",
-    "postbuild": "chmod +x dist/cli.js",
+    "postbuild": "chmod +x dist/cli.js && node scripts/build-web-search.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint",
     "format": "oxfmt -w .",
     "web:export": "pnpm build && sh scripts/web-export.sh",
-    "web:dev": "vite serve web"
+    "web:dev": "pnpm build && vite serve web"
   },
   "keywords": [
     "tdnet",
