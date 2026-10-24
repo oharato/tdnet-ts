@@ -16,7 +16,8 @@
     "lint": "oxlint",
     "format": "oxfmt -w .",
     "web:export": "pnpm build && sh scripts/web-export.sh",
-    "web:dev": "pnpm build && vite serve web"
+    "web:dev": "pnpm build && vite serve web",
+    "search:evaluate": "pnpm build && node --no-warnings scripts/evaluate-search.mjs"
   },
   "keywords": [
     "tdnet",
