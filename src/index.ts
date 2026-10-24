@@ -1,8 +1,9 @@
 import { ApiClient } from './api.js';
 import { DbClient } from './db.js';
 import { PdfParser } from './parser.js';
-import { TdnetDocument, SearchOptions } from './types.js';
+import { TdnetDocument, SearchOptions, SyncResult, SyncStatus } from './types.js';
 import { delay } from './utils.js';
+import { disclosureFromApi, validateSyncOptions } from './sync-input.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -35,142 +36,64 @@ export class TdnetManager {
      * APIからデータを取得し、PDFをダウンロード・変換してSQLiteに保存する
      * @param options 同期オプション
      */
-    public async sync(options: SyncOptions = {}): Promise<void> {
-        const limit = options.limit || 100;
-        const downloadDelayMs = options.downloadDelayMs ?? 1000;
-        const concurrency = options.concurrency ?? 2;
-
-        let apiData;
-        if (options.date) {
-            console.log(`Fetching TDnet info for ${options.date}...`);
-            apiData = await this.api.fetchByDate(options.date, limit);
-        } else {
-            console.log(`Fetching recent ${limit} TDnet info...`);
-            apiData = await this.api.fetchRecent(limit);
+    public async sync(options: SyncOptions = {}): Promise<SyncResult> {
+        const { limit, concurrency, downloadDelayMs } = validateSyncOptions(options);
+        const apiData = options.date ? await this.api.fetchByDate(options.date, limit) : await this.api.fetchRecent(limit);
+        if (!Array.isArray(apiData.items)) throw new Error('Invalid API response: items must be an array.');
+        const result: SyncResult = { received: apiData.items.length, duplicates: 0, invalid: 0, synced: 0, existing: 0,
+            failed: 0, exhausted: 0, unsupported: 0, pdfSaveFailed: 0, limitReached: apiData.items.length >= limit, documents: [] };
+        const seen = new Set<string>();
+        const queue: { doc: TdnetDocument; status?: SyncStatus; attempts: number; pdfSaveFailed: boolean }[] = [];
+        for (const item of apiData.items) {
+            let doc: TdnetDocument;
+            try { doc = disclosureFromApi(item); } catch { result.invalid++; continue; }
+            if (seen.has(doc.id)) { result.duplicates++; continue; }
+            seen.add(doc.id);
+            const existing = this.db.getDocument(doc.id);
+            if (existing) { doc.createdAt = existing.createdAt; doc.retryCount = existing.retryCount ?? 0; }
+            const status: SyncStatus | undefined = existing && existing.content !== null ? 'existing'
+                : !/\.pdf$/i.test(new URL(doc.documentUrl).pathname) ? 'unsupported'
+                : doc.retryCount >= 3 ? 'exhausted' : undefined;
+            if (status === 'unsupported') this.db.insertDocument(doc);
+            queue.push({ doc, status, attempts: 0, pdfSaveFailed: false });
         }
-
-        const items = apiData.items || [];
-        console.log(`Found ${items.length} records.`);
-
-        // ラウンドごとのタイムアウト設定(ミリ秒)
-        const rounds = [
-            { timeoutMs: 3 * 60 * 1000, desc: '3分' },
-            { timeoutMs: 10 * 60 * 1000, desc: '10分' },
-            { timeoutMs: 30 * 60 * 1000, desc: '30分' }
-        ];
-
-        // 1. 各アイテムの初期状態（DBから既存情報を取得）を確認
-        const queue = items
-            .filter((d: any) => d.Tdnet != null)
-            .map((dataItem: any) => {
-                const item = dataItem.Tdnet;
-                const rawUrl = item.document_url || '';
-                const cleanUrl = rawUrl.startsWith('https://webapi.yanoshin.jp/rd.php?')
-                    ? rawUrl.replace('https://webapi.yanoshin.jp/rd.php?', '')
-                    : rawUrl;
-                item.document_url = cleanUrl;
-                const docId = path.basename(item.document_url).replace(/\.pdf$/i, '') || item.id;
-
-                const existing = this.db.getDocument(String(docId));
-                return {
-                    dataItem,
-                    docId,
-                    existing,
-                    processed: existing ? (existing.content !== null) : false,
-                    retryCount: existing ? existing.retryCount : 0
-                };
-            });
-
-        for (let roundIdx = 0; roundIdx < rounds.length; roundIdx++) {
-            const roundItems = queue.filter(q => !q.processed && q.retryCount <= roundIdx);
-            if (roundItems.length === 0) continue;
-
-            const round = rounds[roundIdx];
-            console.log(`\n=== Round ${roundIdx + 1}: Timeout ${round.desc} (Target: ${roundItems.length} items, Concurrency: ${concurrency}) ===`);
-
-            // 並列処理のためのワーカー関数
-            const processItem = async (q: typeof queue[0], index: number) => {
-                const item = q.dataItem.Tdnet;
-                console.log(`\n[Round ${roundIdx + 1}] Processing (${index}/${roundItems.length}): ${item.company_name} - ${item.title}`);
-
-                try {
-                    let content = null;
-                    if (item.document_url && item.document_url.endsWith('.pdf')) {
-                        const parsed = await this.parser.downloadAndParse(item.document_url, round.timeoutMs);
-                        content = parsed.markdown;
-
+        const rounds = [3, 10, 30].map(minutes => minutes * 60 * 1000);
+        for (let round = 0; round < rounds.length; round++) {
+            const pending = queue.filter(item => !item.status && item.doc.retryCount <= round);
+            for (let i = 0; i < pending.length; i += concurrency) {
+                const completed = await Promise.allSettled(pending.slice(i, i + concurrency).map(async item => {
+                    item.attempts++;
+                    try {
+                        const parsed = await this.parser.downloadAndParse(item.doc.documentUrl, rounds[round]);
+                        if (!parsed.markdown.trim()) throw new Error('PDF body is empty.');
                         if (options.savePdfDir && parsed.buffer) {
                             try {
-                                if (!fs.existsSync(options.savePdfDir)) {
-                                    fs.mkdirSync(options.savePdfDir, { recursive: true });
-                                }
-                                const fileName = `${q.docId}.pdf`;
-                                const filePath = path.join(options.savePdfDir, fileName);
-                                if (!fs.existsSync(filePath)) {
-                                    fs.writeFileSync(filePath, Buffer.from(parsed.buffer));
-                                }
-                            } catch (writeErr: any) {
-                                console.error(`  -> Failed to save local PDF for ${q.docId}: ${writeErr.message}`);
-                            }
+                                fs.mkdirSync(options.savePdfDir, { recursive: true });
+                                try { fs.writeFileSync(path.join(options.savePdfDir, `${item.doc.id}.pdf`), Buffer.from(parsed.buffer), { flag: 'wx' }); }
+                                catch (error: any) { if (error.code !== 'EEXIST') throw error; }
+                            } catch { item.pdfSaveFailed = true; }
                         }
+                        item.doc.content = parsed.markdown;
+                        item.status = 'synced';
+                    } catch {
+                        item.doc.retryCount++;
+                        if (round === rounds.length - 1) item.status = 'failed';
                     }
-
-                    const ticker = item.company_code.endsWith('0') ? item.company_code.slice(0, -1) : item.company_code;
-                    const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
-                    const publishedAt = new Date(jstDateStr).toISOString();
-
-                    const doc: TdnetDocument = {
-                        id: q.docId,
-                        publishedAt,
-                        ticker,
-                        companyName: item.company_name,
-                        title: item.title,
-                        documentUrl: item.document_url,
-                        content,
-                        retryCount: q.retryCount,
-                        createdAt: q.existing?.createdAt || new Date().toISOString()
-                    };
-
-                    this.db.insertDocument(doc);
-                    q.processed = true;
-                    console.log(`  -> [${q.docId}] Successfully synced.`);
-
-                } catch (e: any) {
-                    console.log(`  -> [${q.docId}] Error: ${e.message}`);
-                    q.retryCount++;
-
-                    const ticker = item.company_code.endsWith('0') ? item.company_code.slice(0, -1) : item.company_code;
-                    const jstDateStr = item.pubdate.replace(' ', 'T') + '+09:00';
-                    const publishedAt = new Date(jstDateStr).toISOString();
-
-                    const doc: TdnetDocument = {
-                        id: q.docId,
-                        publishedAt,
-                        ticker,
-                        companyName: item.company_name,
-                        title: item.title,
-                        documentUrl: item.document_url,
-                        content: null,
-                        retryCount: q.retryCount,
-                        createdAt: q.existing?.createdAt || new Date().toISOString()
-                    };
-                    this.db.insertDocument(doc);
-                }
-            };
-
-            // 並列実行（リミッター付き）
-            for (let i = 0; i < roundItems.length; i += concurrency) {
-                const chunk = roundItems.slice(i, i + concurrency);
-                await Promise.all(chunk.map((item, j) => processItem(item, i + j + 1)));
-
-                // チャンク間に少しディレイを入れる（レートリミット対策）
-                if (i + concurrency < roundItems.length) {
-                    await delay(downloadDelayMs);
-                }
+                    // A database write failure is fatal, not a successful or retryable PDF result.
+                    this.db.insertDocument(item.doc);
+                }));
+                const rejected = completed.find(outcome => outcome.status === 'rejected');
+                if (rejected?.status === 'rejected') throw rejected.reason;
+                if (i + concurrency < pending.length) await delay(downloadDelayMs);
             }
         }
-
-        console.log('\nSync complete.');
+        for (const item of queue) {
+            const status = item.status ?? 'failed';
+            result[status]++;
+            if (item.pdfSaveFailed) result.pdfSaveFailed++;
+            result.documents.push({ id: item.doc.id, status, attempts: item.attempts, pdfSaveFailed: item.pdfSaveFailed });
+        }
+        return result;
     }
 
     /**

@@ -63,10 +63,12 @@ async function main() {
     try {
         switch (command) {
             case 'sync': {
-                const limit = values.limit ? parseInt(String(values.limit), 10) : 100;
+                const limit = values.limit !== undefined ? Number(values.limit) : 100;
                 const date = values.date ? String(values.date) : undefined;
                 const savePdfDir = values['save-pdf'] ? String(values['save-pdf']) : undefined;
-                await manager.sync({ limit, date, savePdfDir });
+                const result = await manager.sync({ limit, date, savePdfDir });
+                console.log(JSON.stringify(result, null, 2));
+                if (result.failed || result.invalid || result.exhausted || result.unsupported || result.pdfSaveFailed) process.exitCode = 2;
                 break;
             }
 
@@ -211,10 +213,10 @@ Examples:
         }
     } catch (err: any) {
         console.error('Error executing command:', err.message);
-        process.exit(1);
+        process.exitCode = 1;
     } finally {
         manager.close();
-        process.exit(0);
+
     }
 }
 

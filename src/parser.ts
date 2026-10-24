@@ -19,6 +19,7 @@ export class PdfParser {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf2md-'));
         const inputPath = path.join(tempDir, 'document.pdf');
 
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             fs.writeFileSync(inputPath, buffer);
 
@@ -27,7 +28,7 @@ export class PdfParser {
             const result = await Promise.race([
                 extractTablesFromPdf(inputPath),
                 new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('PDF変換がタイムアウトしました')), timeoutMs)
+                    timer = setTimeout(() => reject(new Error('PDF変換がタイムアウトしました')), timeoutMs)
                 )
             ]);
 
@@ -37,6 +38,7 @@ export class PdfParser {
         } catch (e: any) {
             throw new Error(`PDF変換処理に失敗しました: ${e.message}`);
         } finally {
+            clearTimeout(timer);
             try {
                 fs.rmSync(tempDir, { recursive: true, force: true });
             } catch (err) {
