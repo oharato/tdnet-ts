@@ -39,7 +39,7 @@ describe('ApiClient', () => {
         const result = await client.fetchRecent(1);
 
         // fetchが正しいパラメータで呼ばれたか確認
-        expect(global.fetch).toHaveBeenCalledWith('https://webapi.yanoshin.jp/webapi/tdnet/list/recent.json?limit=1');
+        expect(global.fetch).toHaveBeenCalledWith('https://webapi.yanoshin.jp/webapi/tdnet/list/recent.json?limit=1', { signal: expect.any(AbortSignal) });
         expect(result).toEqual(mockResponse);
     });
 
@@ -54,7 +54,7 @@ describe('ApiClient', () => {
         const result = await client.fetchByDate('2026-02-23', 5);
 
         // 日付のハイフンが取り除かれてURLに含まれているか確認
-        expect(global.fetch).toHaveBeenCalledWith('https://webapi.yanoshin.jp/webapi/tdnet/list/20260223.json?limit=5');
+        expect(global.fetch).toHaveBeenCalledWith('https://webapi.yanoshin.jp/webapi/tdnet/list/20260223.json?limit=5', { signal: expect.any(AbortSignal) });
         expect(result).toEqual(mockResponse);
     });
 

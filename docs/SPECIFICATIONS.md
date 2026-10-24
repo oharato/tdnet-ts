@@ -140,3 +140,8 @@ CLIは最終集計と終了コード0/2/1で全成功/部分失敗/致命的失�
 `recover(ids, options): Promise<RecoveryResult>` は保存済みURLを使い、一覧APIを呼ばない。重複IDを除き、最大3ラウンドを今回の枠として適用する。累積retryCountをリセットせず失敗ごと加算する。保存済み本文を再変換/上書きしない。原本後保存時も既存本文のdocumentUrlを使う。
 
 downloadPdfとparsePdfToMarkdownを分離し、savePdfDir指定時は同一ディレクトリ内の一時ファイルへ書き終え、非上書きのハードリンクで原本名へ公開してから変換する。途中の書込み失敗で不完全な原本を残さない。既存の通常ファイルは再利用し、非通常ファイルや安全でないIDを拒否する。原本保存失敗と本文復旧成功を別に報告する。recoverではダウンロード済みbytesを同一呼出しの再変換に使い、次の呼出しでは指定先の保存原本を利用する。スキーマ/自動同期設定は変更しない。
+
+
+### 一覧APIの再試行境界（2026-10-24）
+
+fetchとresponse.jsonを同じAbortControllerの30秒枠に置き、finallyでtimerを解除。最大3試行、TypeError/AbortError/TimeoutErrorとHTTP429/500/502/503/504だけを限定再試行する。JSON構文エラー・その他statusは直ちに返す。失敗応答bodyを解放して待機する。Retry-Afterの秒数/HTTP日時と指数待機の長い方を採用し、60秒超のサーバー要求は早く再送せず例外にする。ApiClientの第1引数の既存互換を維持し、第2引数でrequestTimeoutMsを指定可能。入力検証は単体API呼出しにも適用。
