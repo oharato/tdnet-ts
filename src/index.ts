@@ -1,7 +1,7 @@
 import { ApiClient } from './api.js';
 import { DbClient } from './db.js';
 import { PdfParser } from './parser.js';
-import { TdnetDocument } from './types.js';
+import { TdnetDocument, SearchOptions } from './types.js';
 import { delay } from './utils.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -176,7 +176,7 @@ export class TdnetManager {
     /**
      * データベースの開示情報を検索する
      */
-    public search(keyword: string | undefined, options?: { ticker?: string; title?: string; startDate?: string; endDate?: string; limit?: number }): TdnetDocument[] {
+    public search(keyword: string | undefined, options?: SearchOptions): TdnetDocument[] {
         return this.db.searchDocuments(keyword, options);
     }
 

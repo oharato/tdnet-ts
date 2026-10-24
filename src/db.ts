@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
-import { TdnetDocument } from './types.js';
+import { TdnetDocument, SearchOptions } from './types.js';
 import { searchDateBound } from './search-date.js';
+import { literalPattern, searchColumns, searchTerms } from './search-query.js';
 
 export class DbClient {
   private db: DatabaseSync;
@@ -75,14 +76,20 @@ export class DbClient {
     };
   }
 
-  public searchDocuments(keyword: string | undefined, options?: { ticker?: string; title?: string; startDate?: string; endDate?: string; limit?: number }): TdnetDocument[] {
+  public searchDocuments(keyword: string | undefined, options?: SearchOptions): TdnetDocument[] {
     let sql = `SELECT * FROM tdnet_documents WHERE 1=1`;
     const params: (string | number)[] = [];
 
-    if (keyword) {
-      sql += ` AND (title LIKE ? OR content LIKE ? OR company_name LIKE ?)`;
-      const pattern = `%${keyword}%`;
-      params.push(pattern, pattern, pattern);
+    const match = options?.match ?? 'legacy';
+    const columns = searchColumns(options?.fields);
+    const terms = searchTerms(keyword, match);
+    if (terms.length) {
+      const conditions = terms.map(term => {
+        const pattern = match === 'legacy' ? `%${term}%` : literalPattern(term);
+        params.push(...columns.map(() => pattern));
+        return `(${columns.map(column => `${column} LIKE ?${match === 'legacy' ? '' : " ESCAPE '\\'"}`).join(' OR ')})`;
+      });
+      sql += ` AND (${conditions.join(match === 'any' ? ' OR ' : ' AND ')})`;
     }
 
     if (options?.ticker) {
@@ -90,8 +97,8 @@ export class DbClient {
       params.push(options.ticker);
     }
     if (options?.title) {
-      sql += ` AND title LIKE ?`;
-      params.push(`%${options.title}%`);
+      sql += match === 'legacy' ? ` AND title LIKE ?` : ` AND title LIKE ? ESCAPE '\\'`;
+      params.push(match === 'legacy' ? `%${options.title}%` : literalPattern(options.title));
     }
     const start = options?.startDate !== undefined ? searchDateBound(options.startDate, false) : undefined;
     const end = options?.endDate !== undefined ? searchDateBound(options.endDate, true) : undefined;
@@ -108,11 +115,17 @@ export class DbClient {
       params.push(end.iso);
     }
 
-    sql += ` ORDER BY published_at DESC`;
+    sql += ` ORDER BY published_at DESC, id ASC`;
 
-    if (options?.limit !== undefined) {
-      sql += ` LIMIT ?`;
-      params.push(options.limit);
+    if (options?.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < -1)) {
+      throw new Error('Search limit must be an integer >= -1.');
+    }
+    if (options?.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0)) {
+      throw new Error('Search offset must be a nonnegative integer.');
+    }
+    if (options?.limit !== undefined || options?.offset !== undefined) {
+      sql += ` LIMIT ? OFFSET ?`;
+      params.push(options?.limit ?? -1, options?.offset ?? 0);
     }
 
     const stmt = this.db.prepare(sql);

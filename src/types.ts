@@ -26,3 +26,16 @@ export interface ApiDocumentResponse {
     condition_desc?: string;
     items: ApiDocumentItem[];
 }
+
+export type SearchField = 'title' | 'body' | 'company';
+export type SearchMatch = 'legacy' | 'literal' | 'all' | 'any';
+export interface SearchOptions {
+    ticker?: string;
+    title?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+    fields?: SearchField[];
+    match?: SearchMatch;
+}
