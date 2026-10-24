@@ -77,15 +77,16 @@ window.tdnetApp = function () {
             this.appliedKey = this.criteriaKey();
             this.searchError = '';
             try {
-                this.appliedQuery = this.searchQuery;
-            this.appliedOptions = {
+                const options = {
                     match: this.match,
                     fields: this.field === 'all' ? undefined : [this.field],
                     normalize: this.normalize ? 'width-case' : undefined,
                     ticker: this.ticker || undefined,
                     startDate: this.startDate || undefined, endDate: this.endDate || undefined,
                 };
-            this.results = window.tdnetSearch.searchExport(this.items, this.searchQuery, this.appliedOptions).filter(item => !this.filterYutai || item.title.includes('優待') || (item.content || '').includes('優待'));
+            this.results = window.tdnetSearch.searchExport(this.items, this.searchQuery, options).filter(item => !this.filterYutai || item.title.includes('優待') || (item.content || '').includes('優待'));
+            this.appliedQuery = this.searchQuery;
+            this.appliedOptions = options;
             } catch {
                 this.results = [];
                 this.searchError = '検索条件を確認してください。引用符は語全体を囲み、日付は開始日から終了日の順に指定します。';

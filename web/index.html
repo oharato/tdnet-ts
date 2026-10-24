@@ -151,17 +151,17 @@
                 <div class="detail">
                     <div class="detail-header">
                         <div class="detail-meta">
-                            <span class="ticker-lg" x-text="selected.ticker"></span>
-                            <h2 x-text="selected.companyName"></h2>
+                            <span class="ticker-lg" x-text="selected?.ticker"></span>
+                            <h2 x-text="selected?.companyName"></h2>
                         </div>
-                        <time x-text="formatDate(selected.publishedAt)"></time>
+                        <time x-text="formatDate(selected?.publishedAt)"></time>
                     </div>
 
-                    <h3 class="detail-title" x-text="selected.title"></h3>
+                    <h3 class="detail-title" x-text="selected?.title"></h3>
 
                     <div class="detail-actions-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
                         <div class="detail-links" style="margin-bottom: 0;">
-                            <a :href="'pdfs/' + selected.id + '.pdf'" target="_blank" rel="noopener noreferrer"
+                            <a :href="'pdfs/' + selected?.id + '.pdf'" target="_blank" rel="noopener noreferrer"
                                 class="link-btn primary">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -171,7 +171,7 @@
                                 </svg>
                                 ローカル PDF
                             </a>
-                            <a :href="selected.documentUrl" target="_blank" rel="noopener noreferrer" class="link-btn">
+                            <a :href="selected?.documentUrl" target="_blank" rel="noopener noreferrer" class="link-btn">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                     stroke-linejoin="round">
@@ -183,7 +183,7 @@
                             </a>
                         </div>
                         
-                        <div class="detail-actions" x-show="selected.content" style="margin-top: 0;">
+                        <div class="detail-actions" x-show="selected?.content" style="margin-top: 0;">
                             <button 
                                 @click="renderMarkdown = !renderMarkdown" 
                                 :class="{'active': renderMarkdown}"
@@ -207,13 +207,13 @@
                         </div>
                     </div>
 
-                    <div class="detail-content" x-show="selected.content">
+                    <div class="detail-content" x-show="selected?.content">
                         <!-- renderMarkdown == false (RAW) -->
-                        <div class="content-body" x-show="!renderMarkdown" x-html="highlightText(selected.content || '')"></div>
+                        <div class="content-body" x-show="!renderMarkdown" x-html="highlightText(selected?.content || '')"></div>
                         <!-- renderMarkdown == true (HTML via marked) -->
-                        <div class="content-body markdown-rendered" x-show="renderMarkdown" x-html="renderHtml(selected.content || '')"></div>
+                        <div class="content-body markdown-rendered" x-show="renderMarkdown" x-html="renderHtml(selected?.content || '')"></div>
                     </div>
-                    <div class="detail-content no-content" x-show="!selected.content">
+                    <div class="detail-content no-content" x-show="!selected?.content">
                         <p>本文が未収録または未抽出のため、本文検索の対象外です。TDnet 元URLで原文を確認してください。</p>
                     </div>
                 </div>

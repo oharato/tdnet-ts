@@ -75,6 +75,8 @@ describe('static Web state and evidence', () => {
     it('clears stale selection on invalid input and recovers on the next search', async () => {
         const { app } = appHarness(); await app.init(); app.match = 'all'; app.searchQuery = '"未完'; app.applySearch();
         expect(app.searchError).not.toBe(''); expect(app.results).toHaveLength(0); expect(app.selected).toBeNull();
+        // Alpine can evaluate the old detail while x-if is being removed. Never highlight invalid draft syntax.
+        expect(() => app.highlightText('配当')).not.toThrow();
         app.searchQuery = ''; app.applySearch(); expect(app.searchError).toBe(''); expect(app.results.length).toBeGreaterThan(0);
     });
     it('shows load failures, clears stale data, and supports retry', async () => {
