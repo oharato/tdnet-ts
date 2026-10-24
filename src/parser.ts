@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { extractTablesFromPdf } from '@oharato/pdf2md-ts';
+import { extractPdfInWorker } from './pdf-worker.js';
 
 /**
  * PdfParser class using pdf2md-ts for PDF to Markdown conversion.
@@ -19,26 +19,18 @@ export class PdfParser {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf2md-'));
         const inputPath = path.join(tempDir, 'document.pdf');
 
-        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             fs.writeFileSync(inputPath, buffer);
 
             console.error(`  [debug] extracting tables from PDF (${buffer.length} bytes)...`);
 
-            const result = await Promise.race([
-                extractTablesFromPdf(inputPath),
-                new Promise<never>((_, reject) =>
-                    timer = setTimeout(() => reject(new Error('PDF変換がタイムアウトしました')), timeoutMs)
-                )
-            ]);
-
-            let processed = this.postProcess(result.markdown);
+            const markdown = await extractPdfInWorker(inputPath, timeoutMs);
+            const processed = this.postProcess(markdown);
 
             return processed;
         } catch (e: any) {
             throw new Error(`PDF変換処理に失敗しました: ${e.message}`);
         } finally {
-            clearTimeout(timer);
             try {
                 fs.rmSync(tempDir, { recursive: true, force: true });
             } catch (err) {
