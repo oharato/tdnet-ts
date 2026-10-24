@@ -1,13 +1,18 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
 import { PdfParser } from '../src/parser.js';
 const extract = vi.hoisted(() => vi.fn());
-vi.mock('@oharato/pdf2md-ts', () => ({ extractTablesFromPdf: extract }));
-afterEach(() => { vi.useRealTimers(); extract.mockReset(); });
-it.each(['success', 'failure', 'timeout'])('clears the conversion timer after %s', async outcome => {
-    vi.useFakeTimers();
-    extract.mockImplementation(() => outcome === 'success' ? Promise.resolve({ markdown: 'fixture' }) : outcome === 'failure' ? Promise.reject(new Error('fixture')) : new Promise(() => {}));
+vi.mock('../src/pdf-worker.js', () => ({ extractPdfInWorker: extract }));
+afterEach(() => extract.mockReset());
+it.each(['success', 'failure'])('cleans input only after worker completion: %s', async outcome => {
+    let input = '';
+    extract.mockImplementation(async path => {
+        input = path; expect(fs.existsSync(path)).toBe(true);
+        if (outcome === 'failure') throw new Error('fixture');
+        return 'fixture';
+    });
     const result = new PdfParser().parsePdfToMarkdown(new Uint8Array([1]), 10);
-    const assertion = outcome === 'success' ? expect(result).resolves.toBe('fixture') : expect(result).rejects.toThrow();
-    if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(10);
-    await assertion; expect(vi.getTimerCount()).toBe(0);
+    if (outcome === 'success') await expect(result).resolves.toBe('fixture');
+    else await expect(result).rejects.toThrow();
+    expect(fs.existsSync(input)).toBe(false);
 });

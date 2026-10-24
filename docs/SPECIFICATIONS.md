@@ -145,3 +145,8 @@ downloadPdfとparsePdfToMarkdownを分離し、savePdfDir指定時は同一デ�
 ### 一覧APIの再試行境界（2026-10-24）
 
 fetchとresponse.jsonを同じAbortControllerの30秒枠に置き、finallyでtimerを解除。最大3試行、TypeError/AbortError/TimeoutErrorとHTTP429/500/502/503/504だけを限定再試行する。JSON構文エラー・その他statusは直ちに返す。失敗応答bodyを解放して待機する。Retry-Afterの秒数/HTTP日時と指数待機の長い方を採用し、60秒超のサーバー要求は早く再送せず例外にする。ApiClientの第1引数の既存互換を維持し、第2引数でrequestTimeoutMsを指定可能。入力検証は単体API呼出しにも適用。
+
+
+### PDF抽出worker（2026-10-24）
+
+抽出器の非キャンセル処理をNode worker_threads内に限定する。依存moduleの解決済みURLと入力パスをworkerDataで渡し、固定のESM data URLで起動する。成功本文は文字列を確認し、error/結果なしexit/timeoutを例外として扱う。finallyでタイマー解除とworker停止完了を待ち、その後にparserが一時ファイルを削除する。変換後処理とdownloadPdfの公開APIは維持。worker起動オーバーヘッドは未計測。
