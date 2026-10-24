@@ -6,3 +6,4 @@ yutai.json
 web/pdfs/*.pdf
 web/feed.xml
 .env
+web/search/
