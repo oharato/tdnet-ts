@@ -57,3 +57,15 @@ export interface SyncResult {
     limitReached: boolean;
     documents: { id: string; status: SyncStatus; attempts: number; pdfSaveFailed: boolean }[];
 }
+
+
+export interface RecoveryResult {
+    requested: number;
+    recovered: number;
+    existing: number;
+    missing: number;
+    failed: number;
+    pdfSaved: number;
+    pdfSaveFailed: number;
+    documents: { id: string; status: 'recovered' | 'existing' | 'missing' | 'failed'; attempts: number; pdfSaved: boolean; pdfSaveFailed: boolean }[];
+}

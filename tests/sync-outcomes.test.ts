@@ -9,7 +9,11 @@ describe('sync outcomes and input isolation', () => {
     beforeEach(() => { manager = new TdnetManager(':memory:'); });
     afterEach(() => { manager.close(); vi.restoreAllMocks(); });
     const source = (items: ApiDocumentItem[]) => vi.spyOn(ApiClient.prototype, 'fetchRecent').mockResolvedValue({ items, total_count: items.length, condition_desc: 'fixture' });
-    const parser = () => vi.spyOn(PdfParser.prototype, 'downloadAndParse').mockResolvedValue({ markdown: '架空本文', buffer: new ArrayBuffer(0) });
+    const parser = () => {
+        vi.spyOn(PdfParser.prototype, 'downloadPdf').mockResolvedValue(new ArrayBuffer(0));
+        vi.spyOn(PdfParser.prototype, 'parsePdfToMarkdown').mockResolvedValue('架空本文');
+        return vi.spyOn(PdfParser.prototype, 'downloadAndParse').mockResolvedValue({ markdown: '架空本文', buffer: new ArrayBuffer(0) });
+    };
     it('counts distinct IDs, duplicate records and invalid input without mutating source', async () => {
         const input = [row(), row(), row('bad', { pubdate: '2026-02-30 00:00:00' }), row('valid', { company_code: '1230' })];
         source(input); const parse = parser(); const before = JSON.stringify(input);

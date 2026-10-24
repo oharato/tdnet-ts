@@ -72,6 +72,13 @@ async function main() {
                 break;
             }
 
+            case 'recover': {
+                const result = await manager.recover(positionals.slice(1), { savePdfDir: values['save-pdf'] });
+                console.log(JSON.stringify(result, null, 2));
+                if (result.failed || result.missing || result.pdfSaveFailed) process.exitCode = 2;
+                break;
+            }
+
             case 'search': {
                 if (positionals.length > 2) throw new Error('Wrap the search query in shell quotes.');
                 const keyword = positionals[1] ? String(positionals[1]) : undefined;
@@ -181,12 +188,13 @@ Usage: tdnet-ts <command> [options]
 
 Commands:
   sync       Fetch latest disclosures and sync to DB. Parses PDF to markdown.
+  recover    Retry saved document IDs; optionally save missing original PDFs.
   search     Search the SQLite DB for given keyword. (keyword is optional)
 
 Options:
   --limit, -l   (sync) Number of items to fetch. (search) Max number of results (default: 100)
   --date,  -d   (sync only) Fetch items for specific date (YYYY-MM-DD or YYYYMMDD)
-  --save-pdf    (sync only) Directory to save the downloaded PDFs (e.g. ./web/pdfs)
+  --save-pdf    (sync/recover) Directory to save the downloaded PDFs (e.g. ./web/pdfs)
   --db          Path to SQLite database file (default: ./tdnet.sqlite)
   --json        (search only) Output results in JSON format
   --content, -c (search only) Include the full converted markdown document content
@@ -202,6 +210,7 @@ Options:
 Examples:
   tdnet-ts sync --limit 10
   tdnet-ts sync --date 20231001 --limit 50
+  tdnet-ts recover DOCUMENT_ID --save-pdf ./pdfs
   tdnet-ts search                # Search all (up to limit)
   tdnet-ts search "決算"
   tdnet-ts search "決算" --json

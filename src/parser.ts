@@ -72,13 +72,15 @@ export class PdfParser {
      * 指定されたURLからPDFをダウンロードしてMarkdownに変換する
      */
     public async downloadAndParse(url: string, timeoutMs: number = 30 * 60 * 1000): Promise<{ markdown: string; buffer: ArrayBuffer }> {
-        console.log(`  -> Downloading PDF from ${url} (timeout: ${timeoutMs}ms)`);
-        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-        if (!response.ok) {
-            throw new Error(`PDFのダウンロードに失敗しました: ${response.status} ${response.statusText}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
+        const arrayBuffer = await this.downloadPdf(url, timeoutMs);
         const markdown = await this.parsePdfToMarkdown(arrayBuffer, timeoutMs);
         return { markdown, buffer: arrayBuffer };
+    }
+
+    /** Download independently so an original can be saved before conversion. */
+    public async downloadPdf(url: string, timeoutMs: number = 30 * 60 * 1000): Promise<ArrayBuffer> {
+        const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        if (!response.ok) throw new Error(`PDF download failed: ${response.status} ${response.statusText}`);
+        return response.arrayBuffer();
     }
 }
