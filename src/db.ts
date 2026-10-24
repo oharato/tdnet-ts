@@ -2,10 +2,12 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { TdnetDocument, SearchOptions } from './types.js';
 import { searchDateBound } from './search-date.js';
+import { normalizeSearchText } from './search-normalize.js';
 import { literalPattern, searchColumns, searchTerms } from './search-query.js';
 
 export class DbClient {
   private db: DatabaseSync;
+  private normalizationRegistered = false;
 
   constructor(dbPath: string = path.join(process.cwd(), 'tdnet.sqlite')) {
     this.db = new DatabaseSync(dbPath);
@@ -81,8 +83,24 @@ export class DbClient {
     const params: (string | number)[] = [];
 
     const match = options?.match ?? 'legacy';
-    const columns = searchColumns(options?.fields);
-    const terms = searchTerms(keyword, match);
+    if (options?.normalize !== undefined && options.normalize !== 'width-case') {
+      throw new Error('Search normalize must be width-case or omitted.');
+    }
+    if (options?.normalize && match === 'legacy') {
+      throw new Error('Search normalization requires match literal, all or any.');
+    }
+    const fold = options?.normalize === 'width-case';
+    if (fold && !this.normalizationRegistered) {
+      if (typeof this.db.function !== 'function') {
+        throw new Error('Search normalization requires Node.js 22.13 or later (SQLite function support).');
+      }
+      this.db.function('tdnet_width_case', { deterministic: true }, value =>
+        value === null ? null : normalizeSearchText(String(value)));
+      this.normalizationRegistered = true;
+    }
+    const columns = searchColumns(options?.fields).map(column => fold ? `tdnet_width_case(${column})` : column);
+    // Parse syntax first so folding fullwidth quotes cannot create query operators.
+    const terms = searchTerms(keyword, match).map(term => fold ? normalizeSearchText(term) : term);
     if (terms.length) {
       const conditions = terms.map(term => {
         const pattern = match === 'legacy' ? `%${term}%` : literalPattern(term);
@@ -97,8 +115,10 @@ export class DbClient {
       params.push(options.ticker);
     }
     if (options?.title) {
-      sql += match === 'legacy' ? ` AND title LIKE ?` : ` AND title LIKE ? ESCAPE '\\'`;
-      params.push(match === 'legacy' ? `%${options.title}%` : literalPattern(options.title));
+      const column = fold ? 'tdnet_width_case(title)' : 'title';
+      sql += match === 'legacy' ? ` AND title LIKE ?` : ` AND ${column} LIKE ? ESCAPE '\\'`;
+      const title = fold ? normalizeSearchText(options.title) : options.title;
+      params.push(match === 'legacy' ? `%${title}%` : literalPattern(title));
     }
     const start = options?.startDate !== undefined ? searchDateBound(options.startDate, false) : undefined;
     const end = options?.endDate !== undefined ? searchDateBound(options.endDate, true) : undefined;
