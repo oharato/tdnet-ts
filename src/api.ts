@@ -1,70 +1,60 @@
 import { ApiDocumentResponse } from './types.js';
 import { delay } from './utils.js';
+import { validateSyncOptions } from './sync-input.js';
 
 export class ApiClient {
     private readonly baseUrl = 'https://webapi.yanoshin.jp/webapi/tdnet/list';
-    private readonly maxRetries = 3;
-    private readonly retryDelayMs: number;
+    private readonly maxAttempts = 3;
+    private readonly maxServerWaitMs = 60000;
 
-    constructor(retryDelayMs = 2000) {
-        this.retryDelayMs = retryDelayMs;
+    constructor(private readonly retryDelayMs = 2000, private readonly requestTimeoutMs = 30000) {
+        if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 30000 || !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 2147483647) throw new Error('Invalid API retry delay or timeout.');
     }
 
-    /**
-     * リトライ付きfetch
-     * ネットワークエラー（TypeError）の場合に指数バックオフでリトライする
-     */
-    private async fetchWithRetry(url: string): Promise<Response> {
-        let lastError: unknown;
-        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+    /** Header wait is never shortened. Long server waits stop this invocation instead of retrying early. */
+    private retryWait(header: string | null, attempt: number): number {
+        let serverWait = 0;
+        if (header !== null) {
+            if (/^\d+$/.test(header.trim())) serverWait = Number(header) * 1000;
+            else if (Number.isFinite(Date.parse(header))) serverWait = Math.max(0, Date.parse(header) - Date.now());
+        }
+        if (serverWait > this.maxServerWaitMs) throw new Error('TDnet API Retry-After exceeds 60 seconds; retry later.');
+        return Math.max(serverWait, this.retryDelayMs * 2 ** (attempt - 1));
+    }
+
+    private async request(url: string): Promise<ApiDocumentResponse> {
+        for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(new DOMException('TDnet API timed out', 'TimeoutError')), this.requestTimeoutMs);
+            let waitMs: number;
             try {
-                const response = await fetch(url);
-                return response;
-            } catch (err) {
-                if (!(err instanceof TypeError)) {
-                    throw err;
+                const response = await fetch(url, { signal: controller.signal });
+                if (response.ok) return await response.json() as ApiDocumentResponse;
+                // Release the response before waiting; do not buffer an error body.
+                void response.body?.cancel().catch(() => {});
+                if (![429, 500, 502, 503, 504].includes(response.status) || attempt === this.maxAttempts) {
+                    throw new Error(`Failed to fetch from TDnet API: ${response.statusText}`);
                 }
-                lastError = err;
-                if (attempt < this.maxRetries) {
-                    const waitMs = this.retryDelayMs * Math.pow(2, attempt - 1);
-                    console.warn(`Fetch attempt ${attempt} failed, retrying in ${waitMs}ms...`);
-                    await delay(waitMs);
-                }
+                waitMs = this.retryWait(response.headers?.get('retry-after') ?? null, attempt);
+            } catch (error) {
+                const transient = error instanceof TypeError || (error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name));
+                if (!transient || attempt === this.maxAttempts) throw error;
+                waitMs = this.retryDelayMs * 2 ** (attempt - 1);
+            } finally {
+                clearTimeout(timer);
             }
+            await delay(waitMs);
         }
-        throw lastError;
+        throw new Error('TDnet API attempts exhausted.');
     }
 
-    /**
-     * 指定した日付のTDnet開示情報を取得する
-     * @param date YYYYMMDD または YYYY-MM-DD
-     * @param limit 取得件数 デフォルト100
-     */
-    public async fetchByDate(date: string, limit: number = 100): Promise<ApiDocumentResponse> {
-        const formattedDate = date.replace(/-/g, '');
-        const url = `${this.baseUrl}/${formattedDate}.json?limit=${limit}`;
-
-        const response = await this.fetchWithRetry(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch from TDnet API: ${response.statusText}`);
-        }
-
-        return response.json() as Promise<ApiDocumentResponse>;
+    public async fetchByDate(date: string, limit = 100): Promise<ApiDocumentResponse> {
+        validateSyncOptions({ date, limit });
+        return this.request(`${this.baseUrl}/${date.replace(/-/g, '')}.json?limit=${limit}`);
     }
 
-    /**
-     * 最近のTDnet開示情報を取得する
-     * 日付指定なしの場合は最新順（recent）の情報を取得する
-     * @param limit 取得件数 デフォルト100
-     */
-    public async fetchRecent(limit: number = 100): Promise<ApiDocumentResponse> {
-        const url = `${this.baseUrl}/recent.json?limit=${limit}`;
-
-        const response = await this.fetchWithRetry(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch from TDnet API: ${response.statusText}`);
-        }
-
-        return response.json() as Promise<ApiDocumentResponse>;
+    public async fetchRecent(limit = 100): Promise<ApiDocumentResponse> {
+        validateSyncOptions({ limit });
+        return this.request(`${this.baseUrl}/recent.json?limit=${limit}`);
     }
 }
