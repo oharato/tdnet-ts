@@ -3,6 +3,8 @@
 import { parseArgs } from 'node:util';
 import path from 'node:path';
 import { TdnetManager } from './index.js';
+import type { SearchOptions } from './types.js';
+import { searchTerms } from './search-query.js';
 
 async function main() {
     const { values, positionals } = parseArgs({
@@ -40,6 +42,9 @@ async function main() {
                 type: 'string',
                 short: 's',
             },
+            match: { type: 'string' },
+            fields: { type: 'string' },
+            offset: { type: 'string' },
             end: {
                 type: 'string',
                 short: 'e',
@@ -64,30 +69,36 @@ async function main() {
             }
 
             case 'search': {
+                if (positionals.length > 2) throw new Error('Wrap the search query in shell quotes.');
                 const keyword = positionals[1] ? String(positionals[1]) : undefined;
 
                 const limit = values.limit ? parseInt(String(values.limit), 10) : 100;
 
-                const searchOptions = {
+                const searchOptions: SearchOptions = {
+                    match: values.match as SearchOptions['match'],
+                    fields: values.fields?.split(',').map(field => field.trim()) as SearchOptions['fields'],
+                    offset: values.offset !== undefined ? Number(values.offset) : undefined,
                     ticker: values.ticker ? String(values.ticker) : undefined,
                     title: values.title ? String(values.title) : undefined,
                     startDate: values.start ? String(values.start) : undefined,
                     endDate: values.end ? String(values.end) : undefined,
-                    limit: limit,
+                    limit: values.limit !== undefined ? Number(values.limit) : limit,
                 };
                 const results = manager.search(keyword, searchOptions);
+                const terms = searchTerms(keyword, searchOptions.match);
 
                 if (values.json) {
                     const jsonOutput = results.map(doc => {
                         let snippet = undefined;
-                        if (doc.content && keyword) {
+                        if (doc.content && keyword && (!searchOptions.fields || searchOptions.fields.includes('body'))) {
                             const contentLower = doc.content.toLowerCase();
-                            const keywordLower = keyword.toLowerCase();
-                            const index = contentLower.indexOf(keywordLower);
+                            const matched = terms.find(term => contentLower.includes(term.toLowerCase()));
+                            const keywordLower = matched?.toLowerCase();
+                            const index = keywordLower ? contentLower.indexOf(keywordLower) : -1;
 
                             if (index !== -1) {
                                 const snippetStart = Math.max(0, index - 30);
-                                const snippetEnd = Math.min(doc.content.length, index + keyword.length + 30);
+                                const snippetEnd = Math.min(doc.content.length, index + (keywordLower?.length ?? 0) + 30);
                                 snippet = doc.content.substring(snippetStart, snippetEnd).replace(/\n/g, ' ');
 
                                 if (snippetStart > 0) snippet = '...' + snippet;
@@ -119,14 +130,15 @@ async function main() {
                     console.log(`ID: ${doc.id}`);
 
                     // Create snippet if content is available and contains keyword
-                    if (doc.content && keyword) {
+                    if (doc.content && keyword && (!searchOptions.fields || searchOptions.fields.includes('body'))) {
                         const contentLower = doc.content.toLowerCase();
-                        const keywordLower = keyword.toLowerCase();
-                        const index = contentLower.indexOf(keywordLower);
+                        const matched = terms.find(term => contentLower.includes(term.toLowerCase()));
+                        const keywordLower = matched?.toLowerCase();
+                        const index = keywordLower ? contentLower.indexOf(keywordLower) : -1;
 
                         if (index !== -1) {
                             const snippetStart = Math.max(0, index - 30);
-                            const snippetEnd = Math.min(doc.content.length, index + keyword.length + 30);
+                            const snippetEnd = Math.min(doc.content.length, index + (keywordLower?.length ?? 0) + 30);
                             let snippet = doc.content.substring(snippetStart, snippetEnd).replace(/\n/g, ' ');
 
                             if (snippetStart > 0) snippet = '...' + snippet;
@@ -135,7 +147,8 @@ async function main() {
                             // highlight the keyword in terminal
                             const reset = '\x1b[0m';
                             const red = '\x1b[31m';
-                            const regex = new RegExp(`(${keyword})`, 'gi');
+                            const escaped = (matched ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`(${escaped})`, 'gi');
                             const highlightedSnippet = snippet.replace(regex, `${red}$1${reset}`);
 
                             console.log(`Snippet: ${highlightedSnippet}`);
@@ -169,6 +182,9 @@ Options:
   --db          Path to SQLite database file (default: ./tdnet.sqlite)
   --json        (search only) Output results in JSON format
   --content, -c (search only) Include the full converted markdown document content
+  --match       (search) legacy (default), literal, all (AND), any (OR)
+  --fields      (search) Comma-separated title,body,company (default: all fields)
+  --offset      (search) Skip matching rows (default: 0)
   --ticker, -t  (search only) Filter by company ticker code
   --title       (search only) Filter specifically by document title
   --start,  -s  (search only) Filter by start date (YYYY-MM-DD, JST; or ISO timestamp)
