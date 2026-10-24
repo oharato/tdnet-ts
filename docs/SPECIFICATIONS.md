@@ -155,3 +155,8 @@ fetchとresponse.jsonを同じAbortControllerの30秒枠に置き、finallyでti
 ### Web原本リンクの存在確認（2026-10-24）
 
 web:exportでJSON出力後にannotate-pdfsを実行し、出力先PDFのlstatによる通常ファイル/非空確認をlocalPdfAvailableとして付加する。安全でないID・symlink・欠損/読取不能は未確認(false)。JSON本文は変更せず、一時ファイルからrenameして出力を置換する。Webはtrueの時だけローカルPDFリンクを表示し、旧JSON/不明/欠損は元URLを案内する。完全性や版同一性の検証ではない。
+
+
+### npm配布契約（2026-10-24）
+
+declaration:trueでdistのJavaScriptと対応する型宣言を生成し、package.jsonのmain/types/binを満たす。filesをdist/READMEへ限定し試験原本・JSON・DBを梱包しない。CJS専用出力は提供せず、ESMとして扱う。CIはbuild後に利用側型チェックを実行し、有効な検索/同期/復旧型と不正指定の型エラーを確認する。Web開発/取得補助スクリプトはソースチェックアウトで利用する。
