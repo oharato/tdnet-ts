@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { TdnetDocument } from './types.js';
+import { searchDateBound } from './search-date.js';
 
 export class DbClient {
   private db: DatabaseSync;
@@ -92,14 +93,19 @@ export class DbClient {
       sql += ` AND title LIKE ?`;
       params.push(`%${options.title}%`);
     }
-    if (options?.startDate) {
-      sql += ` AND published_at >= ?`;
-      params.push(options.startDate);
+    const start = options?.startDate !== undefined ? searchDateBound(options.startDate, false) : undefined;
+    const end = options?.endDate !== undefined ? searchDateBound(options.endDate, true) : undefined;
+    if (start && end && (start.iso > end.iso || (end.exclusive && start.iso === end.iso))) {
+      throw new Error('Search startDate must not be after endDate.');
     }
-    if (options?.endDate) {
-      sql += ` AND published_at <= ?`;
-      const endDateFull = options.endDate.length <= 10 ? `${options.endDate}T23:59:59.999Z` : options.endDate;
-      params.push(endDateFull);
+    // Compare instants, including existing ISO values without fractional seconds.
+    if (start) {
+      sql += ` AND julianday(published_at) >= julianday(?)`;
+      params.push(start.iso);
+    }
+    if (end) {
+      sql += end.exclusive ? ` AND julianday(published_at) < julianday(?)` : ` AND julianday(published_at) <= julianday(?)`;
+      params.push(end.iso);
     }
 
     sql += ` ORDER BY published_at DESC`;
