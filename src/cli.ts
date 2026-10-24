@@ -5,6 +5,7 @@ import path from 'node:path';
 import { TdnetManager } from './index.js';
 import type { SearchOptions } from './types.js';
 import { searchTerms } from './search-query.js';
+import { normalizeSearchText } from './search-normalize.js';
 
 async function main() {
     const { values, positionals } = parseArgs({
@@ -43,6 +44,7 @@ async function main() {
                 short: 's',
             },
             match: { type: 'string' },
+            normalize: { type: 'string' },
             fields: { type: 'string' },
             offset: { type: 'string' },
             end: {
@@ -76,6 +78,7 @@ async function main() {
 
                 const searchOptions: SearchOptions = {
                     match: values.match as SearchOptions['match'],
+                    normalize: values.normalize as SearchOptions['normalize'],
                     fields: values.fields?.split(',').map(field => field.trim()) as SearchOptions['fields'],
                     offset: values.offset !== undefined ? Number(values.offset) : undefined,
                     ticker: values.ticker ? String(values.ticker) : undefined,
@@ -85,15 +88,17 @@ async function main() {
                     limit: values.limit !== undefined ? Number(values.limit) : limit,
                 };
                 const results = manager.search(keyword, searchOptions);
-                const terms = searchTerms(keyword, searchOptions.match);
+                const fold = searchOptions.normalize === 'width-case';
+                const terms = searchTerms(keyword, searchOptions.match).map(term => fold ? normalizeSearchText(term) : term);
+                const comparable = (text: string) => fold ? normalizeSearchText(text) : text.toLowerCase();
 
                 if (values.json) {
                     const jsonOutput = results.map(doc => {
                         let snippet = undefined;
                         if (doc.content && keyword && (!searchOptions.fields || searchOptions.fields.includes('body'))) {
-                            const contentLower = doc.content.toLowerCase();
-                            const matched = terms.find(term => contentLower.includes(term.toLowerCase()));
-                            const keywordLower = matched?.toLowerCase();
+                            const contentLower = comparable(doc.content);
+                            const matched = terms.find(term => contentLower.includes(comparable(term)));
+                            const keywordLower = matched === undefined ? undefined : comparable(matched);
                             const index = keywordLower ? contentLower.indexOf(keywordLower) : -1;
 
                             if (index !== -1) {
@@ -131,9 +136,9 @@ async function main() {
 
                     // Create snippet if content is available and contains keyword
                     if (doc.content && keyword && (!searchOptions.fields || searchOptions.fields.includes('body'))) {
-                        const contentLower = doc.content.toLowerCase();
-                        const matched = terms.find(term => contentLower.includes(term.toLowerCase()));
-                        const keywordLower = matched?.toLowerCase();
+                        const contentLower = comparable(doc.content);
+                        const matched = terms.find(term => contentLower.includes(comparable(term)));
+                        const keywordLower = matched === undefined ? undefined : comparable(matched);
                         const index = keywordLower ? contentLower.indexOf(keywordLower) : -1;
 
                         if (index !== -1) {
@@ -147,7 +152,8 @@ async function main() {
                             // highlight the keyword in terminal
                             const reset = '\x1b[0m';
                             const red = '\x1b[31m';
-                            const escaped = (matched ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const originalMatch = doc.content.slice(index, index + (keywordLower?.length ?? 0));
+                            const escaped = originalMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                             const regex = new RegExp(`(${escaped})`, 'gi');
                             const highlightedSnippet = snippet.replace(regex, `${red}$1${reset}`);
 
@@ -183,6 +189,7 @@ Options:
   --json        (search only) Output results in JSON format
   --content, -c (search only) Include the full converted markdown document content
   --match       (search) legacy (default), literal, all (AND), any (OR)
+  --normalize   (search) width-case; requires --match literal, all or any
   --fields      (search) Comma-separated title,body,company (default: all fields)
   --offset      (search) Skip matching rows (default: 0)
   --ticker, -t  (search only) Filter by company ticker code

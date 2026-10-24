@@ -38,4 +38,5 @@ export interface SearchOptions {
     offset?: number;
     fields?: SearchField[];
     match?: SearchMatch;
+    normalize?: 'width-case';
 }
