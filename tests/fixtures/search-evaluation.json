@@ -1,0 +1,598 @@
+{
+  "description": "すべて架空。実際の検索品質・TDnet網羅性を評価する資料ではない。",
+  "documents": [
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "a",
+      "title": "配当 増額 決定",
+      "content": "普通配当を10%増額。架空語コバルト。",
+      "documentUrl": "https://example.invalid/a.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "b",
+      "title": "配当 減額 決定",
+      "content": "普通配当を減額。",
+      "documentUrl": "https://example.invalid/b.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "c",
+      "title": "自己株式取得の決定",
+      "content": "市場で取得する。",
+      "documentUrl": "https://example.invalid/c.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "d",
+      "title": "自己株式処分の決定",
+      "content": "処分による割当。",
+      "documentUrl": "https://example.invalid/d.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "ＡＢＣ架空社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "e",
+      "title": "Ｍ＆Ａ　決定",
+      "content": "統合の検討。",
+      "documentUrl": "https://example.invalid/e.pdf"
+    },
+    {
+      "ticker": "9999",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "f",
+      "title": "資料の訂正",
+      "content": "本文は未収録。",
+      "documentUrl": "https://example.invalid/f.pdf"
+    },
+    {
+      "ticker": "9999",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "g",
+      "title": "配当 増額 決定",
+      "content": null,
+      "documentUrl": "https://example.invalid/g.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-09-30T14:59:59.999Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "h",
+      "title": "配当 増額 決定",
+      "content": "前日資料。",
+      "documentUrl": "https://example.invalid/h.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "i",
+      "title": "自己株式 と 取得",
+      "content": "独立した単語。",
+      "documentUrl": "https://example.invalid/i.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "j",
+      "title": "配当 増額 決定（訂正）",
+      "content": "増額率を5%へ訂正。",
+      "documentUrl": "https://example.invalid/j.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "k",
+      "title": "カタカナ表記",
+      "content": "ｶﾀｶﾅだけの本文。",
+      "documentUrl": "https://example.invalid/k.pdf"
+    },
+    {
+      "ticker": "130A",
+      "companyName": "架空ABC社",
+      "publishedAt": "2026-10-01T06:00:00.000Z",
+      "createdAt": "2026-10-01T07:00:00.000Z",
+      "retryCount": 0,
+      "id": "l",
+      "title": "記号_確認",
+      "content": "引用符＂ＡＢＣ＂とバックスラッシュ\\。",
+      "documentUrl": "https://example.invalid/l.pdf"
+    }
+  ],
+  "queries": [
+    {
+      "id": "short-term",
+      "query": "配当",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "g",
+        "j",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "g",
+        "j",
+        "h"
+      ]
+    },
+    {
+      "id": "and-cross-field",
+      "query": "配当 10%",
+      "options": {
+        "match": "all"
+      },
+      "expectedIds": [
+        "a"
+      ],
+      "relevantIds": [
+        "a"
+      ]
+    },
+    {
+      "id": "or-terms",
+      "query": "取得 減額",
+      "options": {
+        "match": "any"
+      },
+      "expectedIds": [
+        "b",
+        "c",
+        "i"
+      ],
+      "relevantIds": [
+        "b",
+        "c",
+        "i"
+      ]
+    },
+    {
+      "id": "phrase",
+      "query": "\"自己株式取得\"",
+      "options": {
+        "match": "all"
+      },
+      "expectedIds": [
+        "c"
+      ],
+      "relevantIds": [
+        "c"
+      ]
+    },
+    {
+      "id": "phrase-not-separated",
+      "query": "自己株式取得",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "c"
+      ],
+      "relevantIds": [
+        "c"
+      ]
+    },
+    {
+      "id": "title-only",
+      "query": "コバルト",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "title"
+        ]
+      },
+      "expectedIds": [],
+      "relevantIds": []
+    },
+    {
+      "id": "body-only",
+      "query": "コバルト",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "body"
+        ]
+      },
+      "expectedIds": [
+        "a"
+      ],
+      "relevantIds": [
+        "a"
+      ]
+    },
+    {
+      "id": "company-only",
+      "query": "架空ABC社",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "company"
+        ]
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ]
+    },
+    {
+      "id": "company-ascii-case",
+      "query": "abc",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "company"
+        ]
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ]
+    },
+    {
+      "id": "width-default",
+      "query": "m&a",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [],
+      "relevantIds": []
+    },
+    {
+      "id": "width-opt-in",
+      "query": "m&a",
+      "options": {
+        "match": "literal",
+        "normalize": "width-case"
+      },
+      "expectedIds": [
+        "e"
+      ],
+      "relevantIds": [
+        "e"
+      ]
+    },
+    {
+      "id": "width-phrase",
+      "query": "\"m&a 決定\"",
+      "options": {
+        "match": "all",
+        "normalize": "width-case"
+      },
+      "expectedIds": [
+        "e"
+      ],
+      "relevantIds": [
+        "e"
+      ]
+    },
+    {
+      "id": "literal-percent",
+      "query": "10%",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "a"
+      ],
+      "relevantIds": [
+        "a"
+      ]
+    },
+    {
+      "id": "literal-underscore",
+      "query": "_",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "l"
+      ],
+      "relevantIds": [
+        "l"
+      ]
+    },
+    {
+      "id": "literal-backslash",
+      "query": "\\",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "l"
+      ],
+      "relevantIds": [
+        "l"
+      ]
+    },
+    {
+      "id": "fullwidth-quote-not-syntax",
+      "query": "＂ＡＢＣ＂",
+      "options": {
+        "match": "all",
+        "normalize": "width-case"
+      },
+      "expectedIds": [
+        "l"
+      ],
+      "relevantIds": [
+        "l"
+      ]
+    },
+    {
+      "id": "null-body",
+      "query": "配当",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "body"
+        ]
+      },
+      "expectedIds": [
+        "a",
+        "b"
+      ],
+      "relevantIds": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "exact-company-filter",
+      "query": "配当",
+      "options": {
+        "match": "literal",
+        "ticker": "130A"
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "j",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "j",
+        "h"
+      ]
+    },
+    {
+      "id": "jst-day",
+      "query": "配当",
+      "options": {
+        "match": "literal",
+        "startDate": "2026-10-01",
+        "endDate": "2026-10-01"
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "g",
+        "j"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "g",
+        "j"
+      ]
+    },
+    {
+      "id": "filter-or",
+      "query": "取得 減額",
+      "options": {
+        "match": "any",
+        "ticker": "130A",
+        "startDate": "2026-10-01",
+        "endDate": "2026-10-01"
+      },
+      "expectedIds": [
+        "b",
+        "c",
+        "i"
+      ],
+      "relevantIds": [
+        "b",
+        "c",
+        "i"
+      ]
+    },
+    {
+      "id": "pagination",
+      "query": "配当",
+      "options": {
+        "match": "literal",
+        "offset": 1,
+        "limit": 2
+      },
+      "expectedIds": [
+        "b",
+        "g"
+      ],
+      "relevantIds": [
+        "b",
+        "g"
+      ]
+    },
+    {
+      "id": "blank",
+      "query": "　 ",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "i",
+        "j",
+        "k",
+        "l",
+        "h"
+      ]
+    },
+    {
+      "id": "correction-independent",
+      "query": "配当 増額",
+      "options": {
+        "match": "all"
+      },
+      "expectedIds": [
+        "a",
+        "g",
+        "j",
+        "h"
+      ],
+      "relevantIds": [
+        "a",
+        "g",
+        "j",
+        "h"
+      ]
+    },
+    {
+      "id": "typo-gap",
+      "query": "自己株式取徳",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [],
+      "relevantIds": [
+        "c"
+      ],
+      "gap": "誤字訂正は未対応。入力を黙って書き換えない。"
+    },
+    {
+      "id": "semantic-gap",
+      "query": "株主への還元を増やす発表",
+      "options": {
+        "match": "literal"
+      },
+      "expectedIds": [],
+      "relevantIds": [
+        "a",
+        "c",
+        "j"
+      ],
+      "gap": "意味検索は未対応。人の目的を確認してから候補方式を比較する。"
+    },
+    {
+      "id": "kana-gap",
+      "query": "カタカナ",
+      "options": {
+        "match": "literal",
+        "fields": [
+          "body"
+        ],
+        "normalize": "width-case"
+      },
+      "expectedIds": [],
+      "relevantIds": [
+        "k"
+      ],
+      "gap": "width-caseは半角カナを変換しない。"
+    }
+  ]
+}
