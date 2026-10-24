@@ -223,3 +223,5 @@ GitHub Actions を利用して、定期的なデータの更新と GitHub Pages 
 ## 構成・設計
 
 構成の詳細は [docs/SPECIFICATIONS.md](./docs/SPECIFICATIONS.md) を参照してください。
+
+現行実装の確認結果と今後の優先順位は [2026-10-24 改善計画](./docs/plans/2026-10-24-maintenance-plan.md) を参照してください。取得・復旧の保守と、キーワード・あいまい・ベクトル検索の段階的な改善を評価する計画です（検索拡張は未実装）。
