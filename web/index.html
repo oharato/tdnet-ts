@@ -161,7 +161,7 @@
 
                     <div class="detail-actions-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
                         <div class="detail-links" style="margin-bottom: 0;">
-                            <a :href="'pdfs/' + selected?.id + '.pdf'" target="_blank" rel="noopener noreferrer"
+                            <a x-show="selected?.localPdfAvailable === true" :href="'pdfs/' + encodeURIComponent(selected?.id || '') + '.pdf'" target="_blank" rel="noopener noreferrer"
                                 class="link-btn primary">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -171,6 +171,7 @@
                                 </svg>
                                 ローカル PDF
                             </a>
+                            <span x-show="selected?.localPdfAvailable !== true" class="original-unavailable">ローカルPDFは未保存または未確認です。元URLを確認してください。</span>
                             <a :href="selected?.documentUrl" target="_blank" rel="noopener noreferrer" class="link-btn">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"

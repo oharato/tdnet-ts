@@ -211,7 +211,7 @@ pnpm run web:dev
 
 検索条件とページはURLに保存され、ブラウザの戻る・進むで復元できます。条件を変更して検索すると1ページ目に戻ります。繰り返し検索で同じ履歴を増やしません。従来Webの銘柄コード部分一致は専用欄の完全一致に変更しました。APIと比較するときは同じ資料集合に揃え、「優待のみ」を解除してください。
 
-Webはサーバーへの検索API接続ではなく、`export.json` のローカル検索です。本文を出力しなかった資料・抽出失敗の本文・エクスポート上限より古い資料は検索できません。検索語解析・JST日付境界・限定的な表記変換をCLI/APIと共有します。日時はJST表示、並び順は保存日時文字列の降順・同時刻ID昇順です。Text表示では該当箇所を原文のまま強調し、本文がない場合はTDnet元URLの確認を案内します。Markdown表示では検索語の強調は行いません。誤字類似・カナの同一視・意味検索は未対応です。
+Webはサーバーへの検索API接続ではなく、`export.json` のローカル検索です。本文を出力しなかった資料・抽出失敗の本文・エクスポート上限より古い資料は検索できません。検索語解析・JST日付境界・限定的な表記変換をCLI/APIと共有します。日時はJST表示、並び順は保存日時文字列の降順・同時刻ID昇順です。Text表示では該当箇所を原文のまま強調し、本文がない場合はTDnet元URLの確認を案内します。ローカルPDFリンクはエクスポート時に非空の通常ファイルを確認できた資料だけ表示します。Markdown表示では検索語の強調は行いません。誤字類似・カナの同一視・意味検索は未対応です。
 
 `pnpm build` はブラウザ用の検索モジュールを `web/search/` に生成します（生成物はGit管理外）。`pnpm web:dev` も事前にbuildを実行します。既存JSONや架空fixtureだけを確認する場合は `web:dev` を使い、同期も行う `web:export` は実行しないでください。新しい依存・モデル・DB変更・索引はありません。従来どおりAlpine/marked等のCDNへの接続は必要です。
 
@@ -236,7 +236,8 @@ Webはサーバーへの検索API接続ではなく、`export.json` のローカ
 1. `pnpm build` — TypeScriptをビルド
 2. `node dist/cli.js sync --save-pdf web/pdfs -l <LIMIT>` — 最新1000件のデータを取得しPDFを `web/pdfs/` に保存
 3. `node dist/cli.js search --json -c -l <LIMIT> > web/export.json` — 上限件数までのデータを本文付きJSONで出力
-4. `node scripts/generate-rss.mjs` — `web/feed.xml` を生成
+4. `node scripts/annotate-pdfs.mjs` — 保存済みPDFの存在を `localPdfAvailable` に付与
+5. `node scripts/generate-rss.mjs` — `web/feed.xml` を生成
 
 ### 共通オプション
 `--db <path>` オプションをつけることで、書き込み/読み込み先のSQLiteデータベースパスを指定できます。
@@ -336,3 +337,6 @@ GitHub Actions を利用して、定期的なデータの更新と GitHub Pages 
 構成の詳細は [docs/SPECIFICATIONS.md](./docs/SPECIFICATIONS.md) を参照してください。
 
 現行実装の確認結果と今後の優先順位は [2026-10-24 改善計画](./docs/plans/2026-10-24-maintenance-plan.md) を参照してください。取得・復旧の保守と、キーワード・あいまい・ベクトル検索の段階的な改善を評価する計画です（検索拡張は未実装）。
+
+
+既存のJSONに原本の存在情報を付けるだけなら、`node scripts/annotate-pdfs.mjs path/to/export.json path/to/pdfs` を実行できます（取得や変換はしません）。情報のない古いJSONではローカルPDFリンクを隠し、元URLを案内します。確認はエクスポート時点の存在/非空だけで、PDFの完全性・版の同一性・後日の配信成功を保証するものではありません。
