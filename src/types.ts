@@ -40,3 +40,20 @@ export interface SearchOptions {
     match?: SearchMatch;
     normalize?: 'width-case';
 }
+
+
+export type SyncStatus = 'synced' | 'existing' | 'failed' | 'exhausted' | 'unsupported';
+export interface SyncResult {
+    received: number;
+    duplicates: number;
+    invalid: number;
+    synced: number;
+    existing: number;
+    failed: number;
+    exhausted: number;
+    unsupported: number;
+    pdfSaveFailed: number;
+    /** Requested API limit reached; a possible truncation, not proof of complete coverage. */
+    limitReached: boolean;
+    documents: { id: string; status: SyncStatus; attempts: number; pdfSaveFailed: boolean }[];
+}
