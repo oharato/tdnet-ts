@@ -20,6 +20,9 @@ describe('iXBRL parser', () => {
         // 欠損値 (xsi:nil) は数値 Fact ではないため ignored に残す。
         expect(parsed.ignored.every(item => item.reason === 'nil')).toBe(true);
         expect(parsed.ignored).toHaveLength(56);
+        // 文書判定用のテキスト Fact も読み取る (数値 Fact としては保存しない)。
+        expect(parsed.textFacts.find(item => item.name === 'DocumentName')?.rawText).toContain('決算短信');
+        expect(parsed.textFacts.find(item => item.name === 'TypeOfCurrentPeriodDEI')?.rawText).toBe('HY');
 
         const sales = fact(parsed, 'tse-ed-t:NetSales', 'CurrentAccumulatedQ2Duration_ConsolidatedMember_ResultMember');
         expect(sales).toMatchObject({

@@ -49,8 +49,22 @@ export interface IgnoredFact {
     rawText: string | null;
 }
 
+/**
+ * iXBRL のテキスト Fact。数値 Fact として保存はしないが、DocumentName や
+ * 会計基準・訂正フラグなど文書判定に使う。
+ */
+export interface TextFact {
+    concept: string;
+    name: string;
+    namespace: string | null;
+    contextRef: string;
+    rawText: string;
+    sourceFile: string;
+}
+
 export interface ParsedXbrl {
     facts: NumericFact[];
+    textFacts: TextFact[];
     contexts: Map<string, XbrlContext>;
     ignored: IgnoredFact[];
 }
@@ -277,7 +291,32 @@ function parseFact(
     };
 }
 
-function parseFacts(document: XbrlHtmlDocument, parsed: unknown, facts: NumericFact[], ignored: IgnoredFact[]): void {
+function parseTextFact(document: XbrlHtmlDocument, node: Record<string, unknown>, textFacts: TextFact[]): void {
+    const concept = typeof node['@_name'] === 'string' ? node['@_name'].trim() : '';
+    if (!concept) return;
+    const contextRef = typeof node['@_contextRef'] === 'string' ? node['@_contextRef'] : '';
+    if (!contextRef) return;
+    if (String(node['@_xsi:nil']).toLowerCase() === 'true') return;
+    const rawText = textOf(node).trim();
+    if (!rawText) return;
+    const colon = concept.indexOf(':');
+    textFacts.push({
+        concept,
+        name: colon === -1 ? concept : concept.slice(colon + 1),
+        namespace: colon === -1 ? null : concept.slice(0, colon),
+        contextRef,
+        rawText,
+        sourceFile: document.path,
+    });
+}
+
+function parseFacts(
+    document: XbrlHtmlDocument,
+    parsed: unknown,
+    facts: NumericFact[],
+    textFacts: TextFact[],
+    ignored: IgnoredFact[],
+): void {
     const walk = (value: unknown): void => {
         if (value === undefined || value === null) return;
         if (Array.isArray(value)) {
@@ -286,7 +325,8 @@ function parseFacts(document: XbrlHtmlDocument, parsed: unknown, facts: NumericF
         }
         if (typeof value !== 'object') return;
         for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-            if (localName(key).toLowerCase() === 'nonfraction') {
+            const local = localName(key).toLowerCase();
+            if (local === 'nonfraction') {
                 for (const item of asArray(child)) {
                     if (item && typeof item === 'object') {
                         const fact = parseFact(document, item as Record<string, unknown>, ignored);
@@ -294,6 +334,15 @@ function parseFacts(document: XbrlHtmlDocument, parsed: unknown, facts: NumericF
                     }
                 }
                 continue;
+            }
+            if (local === 'nonnumeric') {
+                for (const item of asArray(child)) {
+                    if (item && typeof item === 'object') {
+                        parseTextFact(document, item as Record<string, unknown>, textFacts);
+                    }
+                }
+                // 財務諸表のテキストブロック内に ix:nonFraction がネストするため、
+                // テキスト Fact を記録した後も子要素を走査する。
             }
             if (child && typeof child === 'object' && key !== '#text') walk(child);
         }
@@ -304,16 +353,17 @@ function parseFacts(document: XbrlHtmlDocument, parsed: unknown, facts: NumericF
 /** iXBRL HTML 群を解析する。ZIP を介さないテスト・呼び出し用。 */
 export function parseXbrlHtmlDocuments(documents: XbrlHtmlDocument[]): ParsedXbrl {
     const facts: NumericFact[] = [];
+    const textFacts: TextFact[] = [];
     const contexts = new Map<string, XbrlContext>();
     const ignored: IgnoredFact[] = [];
 
     for (const document of documents) {
         const parsed = parser.parse(document.content) as unknown;
         parseContexts(document, parsed, contexts);
-        parseFacts(document, parsed, facts, ignored);
+        parseFacts(document, parsed, facts, textFacts, ignored);
     }
 
-    return { facts, contexts, ignored };
+    return { facts, textFacts, contexts, ignored };
 }
 
 /** TDnet 決算短信など iXBRL を含む ZIP を展開して解析する。 */
@@ -329,8 +379,8 @@ export async function parseXbrlZip(input: Uint8Array | ArrayBuffer): Promise<Par
         const file = zip.file(name);
         if (!file) continue;
         const content = await file.async('string');
-        // 数値 Fact も Context も持たない定性情報ページは解析対象外。
-        if (!/<ix:nonFraction\b/i.test(content) && !/<(?:xbrli:)?context\b/i.test(content)) continue;
+        // 数値 Fact もテキスト Fact も Context も持たない定性情報ページは解析対象外。
+        if (!/<ix:non(?:Fraction|Numeric)\b/i.test(content) && !/<(?:xbrli:)?context\b/i.test(content)) continue;
         documents.push({ path: name, content });
     }
 

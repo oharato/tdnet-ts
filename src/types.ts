@@ -5,6 +5,7 @@ export interface TdnetDocument {
     companyName: string;    // 会社名
     title: string;          // 件名
     documentUrl: string;    // PDFのURL
+    xbrlUrl?: string | null; // XBRL ZIPのURL (ない場合はnull)
     content: string | null; // 変換されたMarkdown本文
     retryCount: number;     // 解析失敗時のリトライ回数
     createdAt: string;      // レコード作成日時
@@ -18,6 +19,7 @@ export interface ApiDocumentItem {
         company_name: string;
         title: string;
         document_url: string;
+        url_xbrl?: string | null;
     };
 }
 
@@ -43,6 +45,16 @@ export interface SearchOptions {
 
 
 export type SyncStatus = 'synced' | 'existing' | 'failed' | 'exhausted' | 'unsupported';
+export type XbrlSyncStatus = 'synced' | 'existing' | 'skipped' | 'failed' | 'unsupported';
+export interface XbrlSyncResult {
+    synced: number;
+    existing: number;
+    /** XBRL は取得できたが決算短信ではなかった。 */
+    skipped: number;
+    failed: number;
+    unsupported: number;
+    documents: { id: string; status: XbrlSyncStatus; factCount?: number; bytes?: number; durationMs?: number; error?: string }[];
+}
 export interface SyncResult {
     received: number;
     duplicates: number;
@@ -56,6 +68,8 @@ export interface SyncResult {
     /** Requested API limit reached; a possible truncation, not proof of complete coverage. */
     limitReached: boolean;
     documents: { id: string; status: SyncStatus; attempts: number; pdfSaveFailed: boolean }[];
+    /** PDF 経路とは独立した XBRL 取込結果。 */
+    xbrl: XbrlSyncResult;
 }
 
 

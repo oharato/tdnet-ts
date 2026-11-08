@@ -14,9 +14,24 @@ export function validateSyncOptions(options: { limit?: number; concurrency?: num
     return { limit, concurrency, downloadDelayMs };
 }
 
+function normalizeOptionalUrl(value: unknown, extension: RegExp): string | null {
+    if (typeof value !== 'string' || !value) return null;
+    const stripped = value.replace(/^https:\/\/webapi\.yanoshin\.jp\/rd\.php\?/, '');
+    try {
+        const url = new URL(stripped);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+        if (!extension.test(url.pathname)) return null;
+        return stripped;
+    } catch {
+        return null;
+    }
+}
+
 /** Validate once before processing so an invalid record cannot fail again in the error handler. */
 export function disclosureFromApi(data: unknown): TdnetDocument {
-    const item = (data as { Tdnet?: Record<string, unknown> } | null)?.Tdnet;
+    // 一部の limit では API が { Tdnet: ... } ラッパーを付けずに返す。
+    const raw = data as Record<string, unknown> | null;
+    const item = (raw && typeof raw === 'object' && 'Tdnet' in raw ? raw.Tdnet : raw) as Record<string, unknown> | null | undefined;
     if (!item || ['pubdate', 'company_code', 'company_name', 'title', 'document_url'].some(key => typeof item[key] !== 'string' || !item[key])) throw new Error('Missing disclosure fields.');
     const code = item.company_code as string;
     if (!/^[0-9A-Z]{4}(?:0)?$/.test(code)) throw new Error('Invalid company code.');
@@ -28,7 +43,8 @@ export function disclosureFromApi(data: unknown): TdnetDocument {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid document URL.');
     const id = url.pathname.split('/').pop()?.replace(/\.pdf$/i, '') || String(item.id ?? '');
     if (!/^[a-zA-Z0-9_.-]+$/.test(id) || id === '.' || id === '..') throw new Error('Invalid document ID.');
+    const xbrlUrl = normalizeOptionalUrl(item.url_xbrl, /\.zip$/i);
     return { id, publishedAt, ticker: code.length === 5 ? code.slice(0, -1) : code,
-        companyName: item.company_name as string, title: item.title as string, documentUrl,
+        companyName: item.company_name as string, title: item.title as string, documentUrl, xbrlUrl,
         content: null, retryCount: 0, createdAt: new Date().toISOString() };
 }

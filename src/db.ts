@@ -11,7 +11,7 @@ import type { XbrlDimension } from './xbrl/parser.js';
 export interface XbrlDocumentRecord {
   documentId: string;
   xbrlUrl: string | null;
-  status: 'parsed' | 'failed';
+  status: 'parsed' | 'failed' | 'skipped';
   periodType: string | null;
   periodStart: string | null;
   periodEnd: string | null;
