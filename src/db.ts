@@ -45,6 +45,206 @@ function numberOrUndefined(value: unknown): number | undefined {
   return value === null || value === undefined ? undefined : Number(value);
 }
 
+export interface FinancialScreenOptions {
+  /** tdnet_financial_summary に対する SQL の WHERE 条件式。 */
+  where?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** screen の結果行。DB の tdnet_financial_summary をフラットな camelCase で返す。 */
+export interface FinancialSummaryRow {
+  documentId: string;
+  ticker: string | null;
+  companyName: string | null;
+  title: string | null;
+  publishedAt: string | null;
+  xbrlUrl: string | null;
+  periodType: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  priorPeriodStart: string | null;
+  priorPeriodEnd: string | null;
+  accountingStandard: string | null;
+  isConsolidated: boolean | null;
+  isRevision: boolean;
+  currentNetSales?: number;
+  currentOperatingIncome?: number;
+  currentOrdinaryIncome?: number;
+  currentNetIncome?: number;
+  currentNetAssets?: number;
+  currentTotalAssets?: number;
+  currentOperatingCf?: number;
+  currentInvestingCf?: number;
+  currentCashAndEquivalents?: number;
+  currentEps?: number;
+  currentBps?: number;
+  currentDividendPerShare?: number;
+  currentNumberOfEmployees?: number;
+  priorNetSales?: number;
+  priorOperatingIncome?: number;
+  priorOrdinaryIncome?: number;
+  priorNetIncome?: number;
+  priorNetAssets?: number;
+  priorTotalAssets?: number;
+  priorOperatingCf?: number;
+  priorInvestingCf?: number;
+  priorCashAndEquivalents?: number;
+  priorEps?: number;
+  priorBps?: number;
+  priorDividendPerShare?: number;
+  priorNumberOfEmployees?: number;
+  operatingMarginCurrent?: number;
+  operatingMarginPrior?: number;
+  operatingMarginDelta?: number;
+  netSalesGrowthRate?: number;
+  operatingIncomeGrowthRate?: number;
+  freeCashFlowCurrent?: number;
+  freeCashFlowPrior?: number;
+  equityRatioCurrent?: number;
+  equityRatioPrior?: number;
+  roeCurrent?: number;
+  roePrior?: number;
+  roaCurrent?: number;
+  roaPrior?: number;
+  operatingIncomePerEmployee?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapFinancialSummaryRowFlat(row: Record<string, any>): FinancialSummaryRow {
+  return {
+    documentId: String(row.document_id),
+    ticker: row.ticker ?? null,
+    companyName: row.company_name ?? null,
+    title: row.title ?? null,
+    publishedAt: row.published_at ?? null,
+    xbrlUrl: row.xbrl_url ?? null,
+    periodType: row.period_type ?? null,
+    periodStart: row.period_start ?? null,
+    periodEnd: row.period_end ?? null,
+    priorPeriodStart: row.prior_period_start ?? null,
+    priorPeriodEnd: row.prior_period_end ?? null,
+    accountingStandard: row.accounting_standard ?? null,
+    isConsolidated: row.is_consolidated === null || row.is_consolidated === undefined ? null : Boolean(row.is_consolidated),
+    isRevision: Boolean(row.is_revision),
+    currentNetSales: numberOrUndefined(row.current_net_sales),
+    currentOperatingIncome: numberOrUndefined(row.current_operating_income),
+    currentOrdinaryIncome: numberOrUndefined(row.current_ordinary_income),
+    currentNetIncome: numberOrUndefined(row.current_net_income),
+    currentNetAssets: numberOrUndefined(row.current_net_assets),
+    currentTotalAssets: numberOrUndefined(row.current_total_assets),
+    currentOperatingCf: numberOrUndefined(row.current_operating_cf),
+    currentInvestingCf: numberOrUndefined(row.current_investing_cf),
+    currentCashAndEquivalents: numberOrUndefined(row.current_cash_and_equivalents),
+    currentEps: numberOrUndefined(row.current_eps),
+    currentBps: numberOrUndefined(row.current_bps),
+    currentDividendPerShare: numberOrUndefined(row.current_dividend_per_share),
+    currentNumberOfEmployees: numberOrUndefined(row.current_number_of_employees),
+    priorNetSales: numberOrUndefined(row.prior_net_sales),
+    priorOperatingIncome: numberOrUndefined(row.prior_operating_income),
+    priorOrdinaryIncome: numberOrUndefined(row.prior_ordinary_income),
+    priorNetIncome: numberOrUndefined(row.prior_net_income),
+    priorNetAssets: numberOrUndefined(row.prior_net_assets),
+    priorTotalAssets: numberOrUndefined(row.prior_total_assets),
+    priorOperatingCf: numberOrUndefined(row.prior_operating_cf),
+    priorInvestingCf: numberOrUndefined(row.prior_investing_cf),
+    priorCashAndEquivalents: numberOrUndefined(row.prior_cash_and_equivalents),
+    priorEps: numberOrUndefined(row.prior_eps),
+    priorBps: numberOrUndefined(row.prior_bps),
+    priorDividendPerShare: numberOrUndefined(row.prior_dividend_per_share),
+    priorNumberOfEmployees: numberOrUndefined(row.prior_number_of_employees),
+    operatingMarginCurrent: numberOrUndefined(row.operating_margin_current),
+    operatingMarginPrior: numberOrUndefined(row.operating_margin_prior),
+    operatingMarginDelta: numberOrUndefined(row.operating_margin_delta),
+    netSalesGrowthRate: numberOrUndefined(row.net_sales_growth_rate),
+    operatingIncomeGrowthRate: numberOrUndefined(row.operating_income_growth_rate),
+    freeCashFlowCurrent: numberOrUndefined(row.free_cash_flow_current),
+    freeCashFlowPrior: numberOrUndefined(row.free_cash_flow_prior),
+    equityRatioCurrent: numberOrUndefined(row.equity_ratio_current),
+    equityRatioPrior: numberOrUndefined(row.equity_ratio_prior),
+    roeCurrent: numberOrUndefined(row.roe_current),
+    roePrior: numberOrUndefined(row.roe_prior),
+    roaCurrent: numberOrUndefined(row.roa_current),
+    roaPrior: numberOrUndefined(row.roa_prior),
+    operatingIncomePerEmployee: numberOrUndefined(row.operating_income_per_employee),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function mapFinancialSummaryRow(row: Record<string, any>): ExtractedFinancialSummary {
+  return {
+    documentId: String(row.document_id),
+    ticker: row.ticker ?? null,
+    companyName: row.company_name ?? null,
+    title: row.title ?? null,
+    publishedAt: row.published_at ?? null,
+    xbrlUrl: row.xbrl_url ?? null,
+    periodType: row.period_type ?? 'unknown',
+    periodStart: row.period_start ?? null,
+    periodEnd: row.period_end ?? null,
+    priorPeriodStart: row.prior_period_start ?? null,
+    priorPeriodEnd: row.prior_period_end ?? null,
+    accountingStandard: row.accounting_standard ?? 'unknown',
+    isConsolidated: row.is_consolidated === null || row.is_consolidated === undefined ? null : Boolean(row.is_consolidated),
+    isRevision: Boolean(row.is_revision),
+    current: {
+      netSales: numberOrUndefined(row.current_net_sales),
+      operatingIncome: numberOrUndefined(row.current_operating_income),
+      ordinaryIncome: numberOrUndefined(row.current_ordinary_income),
+      netIncome: numberOrUndefined(row.current_net_income),
+      netAssets: numberOrUndefined(row.current_net_assets),
+      totalAssets: numberOrUndefined(row.current_total_assets),
+      operatingCashFlow: numberOrUndefined(row.current_operating_cf),
+      investingCashFlow: numberOrUndefined(row.current_investing_cf),
+      cashAndEquivalents: numberOrUndefined(row.current_cash_and_equivalents),
+      eps: numberOrUndefined(row.current_eps),
+      bps: numberOrUndefined(row.current_bps),
+      dividendPerShare: numberOrUndefined(row.current_dividend_per_share),
+      numberOfEmployees: numberOrUndefined(row.current_number_of_employees),
+    },
+    prior: {
+      netSales: numberOrUndefined(row.prior_net_sales),
+      operatingIncome: numberOrUndefined(row.prior_operating_income),
+      ordinaryIncome: numberOrUndefined(row.prior_ordinary_income),
+      netIncome: numberOrUndefined(row.prior_net_income),
+      netAssets: numberOrUndefined(row.prior_net_assets),
+      totalAssets: numberOrUndefined(row.prior_total_assets),
+      operatingCashFlow: numberOrUndefined(row.prior_operating_cf),
+      investingCashFlow: numberOrUndefined(row.prior_investing_cf),
+      cashAndEquivalents: numberOrUndefined(row.prior_cash_and_equivalents),
+      eps: numberOrUndefined(row.prior_eps),
+      bps: numberOrUndefined(row.prior_bps),
+      dividendPerShare: numberOrUndefined(row.prior_dividend_per_share),
+      numberOfEmployees: numberOrUndefined(row.prior_number_of_employees),
+    },
+    indicators: {
+      operatingMarginCurrent: numberOrUndefined(row.operating_margin_current),
+      operatingMarginPrior: numberOrUndefined(row.operating_margin_prior),
+      operatingMarginDelta: numberOrUndefined(row.operating_margin_delta),
+      netSalesGrowthRate: numberOrUndefined(row.net_sales_growth_rate),
+      operatingIncomeGrowthRate: numberOrUndefined(row.operating_income_growth_rate),
+      freeCashFlowCurrent: numberOrUndefined(row.free_cash_flow_current),
+      freeCashFlowPrior: numberOrUndefined(row.free_cash_flow_prior),
+      equityRatioCurrent: numberOrUndefined(row.equity_ratio_current),
+      equityRatioPrior: numberOrUndefined(row.equity_ratio_prior),
+      roeCurrent: numberOrUndefined(row.roe_current),
+      roePrior: numberOrUndefined(row.roe_prior),
+      roaCurrent: numberOrUndefined(row.roa_current),
+      roaPrior: numberOrUndefined(row.roa_prior),
+      operatingIncomePerEmployee: numberOrUndefined(row.operating_income_per_employee),
+    },
+    usedContextIds: {
+      currentDuration: [],
+      priorDuration: [],
+      currentInstant: [],
+      priorFiscalYearInstant: [],
+      priorPeriodInstant: [],
+    },
+  };
+}
+
 export class DbClient {
   private db: DatabaseSync;
   private normalizationRegistered = false;
@@ -501,76 +701,29 @@ export class DbClient {
 
   public getFinancialSummary(documentId: string): ExtractedFinancialSummary | undefined {
     const row = this.db.prepare(`SELECT * FROM tdnet_financial_summary WHERE document_id = ?`).get(documentId) as Record<string, any> | undefined;
-    if (!row) return undefined;
-    return {
-      documentId: String(row.document_id),
-      ticker: row.ticker ?? null,
-      companyName: row.company_name ?? null,
-      title: row.title ?? null,
-      publishedAt: row.published_at ?? null,
-      xbrlUrl: row.xbrl_url ?? null,
-      periodType: row.period_type ?? 'unknown',
-      periodStart: row.period_start ?? null,
-      periodEnd: row.period_end ?? null,
-      priorPeriodStart: row.prior_period_start ?? null,
-      priorPeriodEnd: row.prior_period_end ?? null,
-      accountingStandard: row.accounting_standard ?? 'unknown',
-      isConsolidated: row.is_consolidated === null || row.is_consolidated === undefined ? null : Boolean(row.is_consolidated),
-      isRevision: Boolean(row.is_revision),
-      current: {
-        netSales: numberOrUndefined(row.current_net_sales),
-        operatingIncome: numberOrUndefined(row.current_operating_income),
-        ordinaryIncome: numberOrUndefined(row.current_ordinary_income),
-        netIncome: numberOrUndefined(row.current_net_income),
-        netAssets: numberOrUndefined(row.current_net_assets),
-        totalAssets: numberOrUndefined(row.current_total_assets),
-        operatingCashFlow: numberOrUndefined(row.current_operating_cf),
-        investingCashFlow: numberOrUndefined(row.current_investing_cf),
-        cashAndEquivalents: numberOrUndefined(row.current_cash_and_equivalents),
-        eps: numberOrUndefined(row.current_eps),
-        bps: numberOrUndefined(row.current_bps),
-        dividendPerShare: numberOrUndefined(row.current_dividend_per_share),
-        numberOfEmployees: numberOrUndefined(row.current_number_of_employees),
-      },
-      prior: {
-        netSales: numberOrUndefined(row.prior_net_sales),
-        operatingIncome: numberOrUndefined(row.prior_operating_income),
-        ordinaryIncome: numberOrUndefined(row.prior_ordinary_income),
-        netIncome: numberOrUndefined(row.prior_net_income),
-        netAssets: numberOrUndefined(row.prior_net_assets),
-        totalAssets: numberOrUndefined(row.prior_total_assets),
-        operatingCashFlow: numberOrUndefined(row.prior_operating_cf),
-        investingCashFlow: numberOrUndefined(row.prior_investing_cf),
-        cashAndEquivalents: numberOrUndefined(row.prior_cash_and_equivalents),
-        eps: numberOrUndefined(row.prior_eps),
-        bps: numberOrUndefined(row.prior_bps),
-        dividendPerShare: numberOrUndefined(row.prior_dividend_per_share),
-        numberOfEmployees: numberOrUndefined(row.prior_number_of_employees),
-      },
-      indicators: {
-        operatingMarginCurrent: numberOrUndefined(row.operating_margin_current),
-        operatingMarginPrior: numberOrUndefined(row.operating_margin_prior),
-        operatingMarginDelta: numberOrUndefined(row.operating_margin_delta),
-        netSalesGrowthRate: numberOrUndefined(row.net_sales_growth_rate),
-        operatingIncomeGrowthRate: numberOrUndefined(row.operating_income_growth_rate),
-        freeCashFlowCurrent: numberOrUndefined(row.free_cash_flow_current),
-        freeCashFlowPrior: numberOrUndefined(row.free_cash_flow_prior),
-        equityRatioCurrent: numberOrUndefined(row.equity_ratio_current),
-        equityRatioPrior: numberOrUndefined(row.equity_ratio_prior),
-        roeCurrent: numberOrUndefined(row.roe_current),
-        roePrior: numberOrUndefined(row.roe_prior),
-        roaCurrent: numberOrUndefined(row.roa_current),
-        roaPrior: numberOrUndefined(row.roa_prior),
-        operatingIncomePerEmployee: numberOrUndefined(row.operating_income_per_employee),
-      },
-      usedContextIds: {
-        currentDuration: [],
-        priorDuration: [],
-        currentInstant: [],
-        priorFiscalYearInstant: [],
-        priorPeriodInstant: [],
-      },
-    };
+    return row ? mapFinancialSummaryRow(row) : undefined;
+  }
+
+  /** tdnet_financial_summary を --where の SQL 条件式で検索する。 */
+  public screenFinancials(options: FinancialScreenOptions = {}): FinancialSummaryRow[] {
+    let sql = `SELECT * FROM tdnet_financial_summary`;
+    const params: (string | number)[] = [];
+    if (options.where !== undefined && options.where.trim() !== '') {
+      sql += ` WHERE (${options.where})`;
+    }
+    sql += ` ORDER BY period_end DESC, document_id ASC`;
+    if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit < -1)) {
+      throw new Error('Screen limit must be an integer >= -1.');
+    }
+    if (options.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0)) {
+      throw new Error('Screen offset must be a nonnegative integer.');
+    }
+    if (options.limit !== undefined || options.offset !== undefined) {
+      sql += ` LIMIT ? OFFSET ?`;
+      params.push(options.limit ?? -1, options.offset ?? 0);
+    }
+    const rows = this.db.prepare(sql).all(...params) as Record<string, any>[];
+    return rows.map(mapFinancialSummaryRowFlat);
   }
 
   /** XBRL 文書・Fact 全件・サマリーを 1 トランザクションで保存する。 */

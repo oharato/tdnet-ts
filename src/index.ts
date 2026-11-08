@@ -1,5 +1,7 @@
 import { ApiClient } from './api.js';
 import { DbClient } from './db.js';
+import type { FinancialScreenOptions, FinancialSummaryRow } from './db.js';
+import type { ExtractedFinancialSummary } from './financial/extractor.js';
 import { PdfParser } from './parser.js';
 import { TdnetDocument, SearchOptions, SyncResult, SyncStatus, RecoveryResult } from './types.js';
 import { delay } from './utils.js';
@@ -8,6 +10,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export * from './types.js';
+export type { FinancialScreenOptions, FinancialSummaryRow } from './db.js';
+export type {
+    AccountingStandard,
+    ExtractedFinancialSummary,
+    FinancialExtractionMetadata,
+    FinancialIndicators,
+    FinancialMetrics,
+    FinancialPeriodType,
+} from './financial/extractor.js';
 export { ApiClient, DbClient, PdfParser };
 
 export interface SyncOptions {
@@ -191,6 +202,13 @@ export class TdnetManager {
      */
     public search(keyword: string | undefined, options?: SearchOptions): TdnetDocument[] {
         return this.db.searchDocuments(keyword, options);
+    }
+
+    /**
+     * tdnet_financial_summary を SQL の WHERE 条件式で検索する。
+     */
+    public screenFinancials(options?: FinancialScreenOptions): FinancialSummaryRow[] {
+        return this.db.screenFinancials(options);
     }
 
     /**
