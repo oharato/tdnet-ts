@@ -42,6 +42,8 @@
     "@oharato/pdf2md-ts": "^0.1.4",
     "@opendataloader/pdf": "^1.10.1",
     "dotenv": "^17.3.1",
+    "fast-xml-parser": "^5.12.0",
+    "jszip": "^3.10.2",
     "llama-parse": "^0.1.0"
   },
   "files": [
