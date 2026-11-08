@@ -2,6 +2,7 @@ export interface TdnetDocument {
     id: string;             // TDnetドキュメントID (主キー、例: 140120260220565990)
     publishedAt: string;    // 開示日時 (UTC ISO形式)
     ticker: string;         // 銘柄コード (末尾0を除去済み)
+    companyCode?: string;   // API の証券コード (5桁。JPX 永続URL用)
     companyName: string;    // 会社名
     title: string;          // 件名
     documentUrl: string;    // PDFのURL

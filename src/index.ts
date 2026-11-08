@@ -32,6 +32,8 @@ export interface SyncOptions {
     downloadDelayMs?: number; // PDFダウンロード間の待機時間(デフォルト1000ms)
     savePdfDir?: string;      // PDFを保存するディレクトリ。指定された場合のみ保存。
     concurrency?: number;     // 並列処理数 (デフォルト2)
+    /** XBRL ZIP のみを取り込む。PDF の取得・変換・保存は一切行わない。 */
+    xbrlOnly?: boolean;
 }
 
 function accountingStandardFromXbrl(value: string | null): AccountingStandard | undefined {
@@ -63,6 +65,8 @@ export class TdnetManager {
      */
     public async sync(options: SyncOptions = {}): Promise<SyncResult> {
         const { limit, concurrency, downloadDelayMs } = validateSyncOptions(options);
+        if (options.xbrlOnly !== undefined && typeof options.xbrlOnly !== 'boolean') throw new Error('Sync xbrlOnly must be a boolean.');
+        const xbrlOnly = options.xbrlOnly === true;
         const apiData = options.date ? await this.api.fetchByDate(options.date, limit) : await this.api.fetchRecent(limit);
         if (!Array.isArray(apiData.items)) throw new Error('Invalid API response: items must be an array.');
         const result: SyncResult = { received: apiData.items.length, duplicates: 0, invalid: 0, synced: 0, existing: 0,
@@ -75,14 +79,25 @@ export class TdnetManager {
             try { doc = disclosureFromApi(item); } catch { result.invalid++; continue; }
             if (seen.has(doc.id)) { result.duplicates++; continue; }
             seen.add(doc.id);
+            if (xbrlOnly) {
+                // PDF の状態や既存本文には触れず、XBRL 取込だけを行う。
+                queue.push({ doc, attempts: 0, pdfSaveFailed: false });
+                continue;
+            }
             const existing = this.db.getDocument(doc.id);
             if (existing) { doc.createdAt = existing.createdAt; doc.retryCount = existing.retryCount ?? 0; }
             const status: SyncStatus | undefined = existing && existing.content !== null ? 'existing'
                 : !/\.pdf$/i.test(new URL(doc.documentUrl).pathname) ? 'unsupported'
                 : doc.retryCount >= 3 ? 'exhausted' : undefined;
-            if (status === 'existing') doc = { ...existing!, xbrlUrl: doc.xbrlUrl }; // Keep body and its source URL together.
+            // Keep body and its source URL together.
+            if (status === 'existing') doc = { ...existing!, xbrlUrl: doc.xbrlUrl, companyCode: doc.companyCode ?? existing!.companyCode };
             if (status === 'unsupported') this.db.insertDocument(doc);
             queue.push({ doc, status, attempts: 0, pdfSaveFailed: false });
+        }
+        if (xbrlOnly) {
+            // url_xbrl が無い資料も skipped として記録するが、PDF 経路には回さない。
+            await this.syncXbrl(queue.map(item => item.doc), result.xbrl, downloadDelayMs, true);
+            return result;
         }
         const rounds = [3, 10, 30].map(minutes => minutes * 60 * 1000);
         for (let round = 0; round < rounds.length; round++) {
@@ -182,8 +197,8 @@ export class TdnetManager {
      * XBRL ZIP の取得・判定・解析・保存を PDF 経路から独立して行う。
      * 失敗しても PDF の同期結果には影響させない。
      */
-    private async syncXbrl(docs: TdnetDocument[], result: XbrlSyncResult, downloadDelayMs: number): Promise<void> {
-        const candidates = docs.filter(doc => Boolean(doc.xbrlUrl));
+    private async syncXbrl(docs: TdnetDocument[], result: XbrlSyncResult, downloadDelayMs: number, includeWithoutXbrl = false): Promise<void> {
+        const candidates = includeWithoutXbrl ? docs : docs.filter(doc => Boolean(doc.xbrlUrl));
         for (let i = 0; i < candidates.length; i++) {
             const doc = candidates[i];
             const existing = this.db.getXbrlDocument(doc.id);
@@ -194,12 +209,34 @@ export class TdnetManager {
             }
 
             const now = new Date().toISOString();
+            if (!doc.xbrlUrl) {
+                // XBRL が無い資料は PDF 経路に回さず skipped として記録する。
+                this.db.insertXbrlDocument({
+                    documentId: doc.id,
+                    xbrlUrl: null,
+                    status: 'skipped',
+                    periodType: null,
+                    periodStart: null,
+                    periodEnd: null,
+                    accountingStandard: null,
+                    isConsolidated: null,
+                    isRevision: doc.title.includes('訂正'),
+                    factCount: 0,
+                    error: null,
+                    createdAt: existing?.createdAt ?? now,
+                    updatedAt: now,
+                });
+                result.skipped++;
+                result.documents.push({ id: doc.id, status: 'skipped', factCount: 0 });
+                continue;
+            }
+
             const createdAt = existing?.createdAt ?? now;
             const startedAt = Date.now();
             let bytes: number | undefined;
             try {
                 const xbrlUrl = doc.xbrlUrl!;
-                const buffer = await this.xbrlDownloader.download(xbrlUrl);
+                const buffer = await this.xbrlDownloader.download(xbrlUrl, undefined, doc.companyCode);
                 bytes = buffer.byteLength;
                 const parsed = await parseXbrlZip(buffer);
                 const classification = classifyXbrlDocument(parsed);

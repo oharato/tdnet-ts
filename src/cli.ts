@@ -47,6 +47,9 @@ export async function runCli(args: string[] = process.argv.slice(2)) {
             'save-pdf': {
                 type: 'string',
             },
+            'xbrl-only': {
+                type: 'boolean',
+            },
             content: {
                 type: 'boolean',
                 short: 'c',
@@ -89,9 +92,12 @@ export async function runCli(args: string[] = process.argv.slice(2)) {
                 const limit = values.limit !== undefined ? Number(values.limit) : 100;
                 const date = values.date ? String(values.date) : undefined;
                 const savePdfDir = values['save-pdf'] ? String(values['save-pdf']) : undefined;
-                const result = await getManager().sync({ limit, date, savePdfDir });
+                const xbrlOnly = values['xbrl-only'] === true;
+                const result = await getManager().sync({ limit, date, savePdfDir, xbrlOnly });
                 console.log(JSON.stringify(result, null, 2));
-                if (result.failed || result.invalid || result.exhausted || result.unsupported || result.pdfSaveFailed) process.exitCode = 2;
+                // XBRL 専用モードでは PDF の集計は常に 0 なので、XBRL の失敗を終了コードに反映する。
+                if (result.failed || result.invalid || result.exhausted || result.unsupported || result.pdfSaveFailed
+                    || (xbrlOnly && result.xbrl.failed)) process.exitCode = 2;
                 break;
             }
 
@@ -329,6 +335,7 @@ Options:
   --limit, -l   (sync) Number of items to fetch. (search/screen) Max number of results
   --date,  -d   (sync only) Fetch items for specific date (YYYY-MM-DD or YYYYMMDD)
   --save-pdf    (sync/recover) Directory to save the downloaded PDFs (e.g. ./web/pdfs)
+  --xbrl-only   (sync only) Ingest only XBRL ZIPs; never download, convert or save PDFs
   --db          Path to SQLite database file (default: ./tdnet.sqlite)
   --json        (search/screen/schema/parse) Output results in JSON format
   --where, -w   (screen only) SQL WHERE expression for tdnet_financial_summary
@@ -345,6 +352,7 @@ Options:
 Examples:
   tdnet-ts sync --limit 10
   tdnet-ts sync --date 20231001 --limit 50
+  tdnet-ts sync --date 2023-11-08 --xbrl-only --limit 2000
   tdnet-ts recover DOCUMENT_ID --save-pdf ./pdfs
   tdnet-ts search                # Search all (up to limit)
   tdnet-ts search "決算"
