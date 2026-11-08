@@ -36,6 +36,7 @@ export interface ResolvedFact extends NumericFact {
     actualForecast: ActualForecast;
     contextStatus: ContextResolutionStatus;
     unresolvedReasons: string[];
+    dimensions: XbrlDimension[];
 }
 
 interface IdDimensions {
@@ -285,6 +286,7 @@ export function resolveFacts(parsed: ParsedXbrl): ResolvedFact[] {
             actualForecast: context.actualForecast,
             contextStatus: context.status,
             unresolvedReasons: context.unresolvedReasons,
+            dimensions: context.dimensions,
         };
     });
 }

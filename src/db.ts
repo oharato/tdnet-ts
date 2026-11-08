@@ -4,6 +4,46 @@ import { TdnetDocument, SearchOptions } from './types.js';
 import { searchDateBound } from './search-date.js';
 import { normalizeSearchText } from './search-normalize.js';
 import { literalPattern, searchColumns, searchTerms } from './search-query.js';
+import type { ExtractedFinancialSummary } from './financial/extractor.js';
+import type { ResolvedFact } from './xbrl/context.js';
+import type { XbrlDimension } from './xbrl/parser.js';
+
+export interface XbrlDocumentRecord {
+  documentId: string;
+  xbrlUrl: string | null;
+  status: 'parsed' | 'failed';
+  periodType: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  accountingStandard: string | null;
+  isConsolidated: boolean | null;
+  isRevision: boolean;
+  factCount: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredFinancialFact extends Omit<ResolvedFact, 'dimensions' | 'unresolvedReasons'> {
+  dimensions: XbrlDimension[];
+  unresolvedReasons: string[];
+}
+
+function nullableNumber(value: number | undefined): number | null {
+  return value === undefined || Number.isNaN(value) ? null : value;
+}
+
+function nullableInteger(value: number | undefined): number | null {
+  return value === undefined || Number.isNaN(value) ? null : Math.round(value);
+}
+
+function booleanToInteger(value: boolean | null): number | null {
+  return value === null ? null : value ? 1 : 0;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return value === null || value === undefined ? undefined : Number(value);
+}
 
 export class DbClient {
   private db: DatabaseSync;
@@ -34,6 +74,115 @@ export class DbClient {
     } catch {
       /* ignore if already exists */
     }
+
+    // XBRL 解析結果。既存の tdnet_documents は変更しない。
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tdnet_xbrl_documents (
+        document_id TEXT PRIMARY KEY,
+        xbrl_url TEXT,
+        status TEXT NOT NULL,
+        period_type TEXT,
+        period_start TEXT,
+        period_end TEXT,
+        accounting_standard TEXT,
+        is_consolidated INTEGER,
+        is_revision INTEGER NOT NULL DEFAULT 0,
+        fact_count INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tdnet_financial_facts (
+        document_id TEXT NOT NULL,
+        concept TEXT NOT NULL,
+        name TEXT NOT NULL,
+        namespace TEXT,
+        context_id TEXT NOT NULL,
+        unit_ref TEXT,
+        decimals TEXT,
+        scale INTEGER NOT NULL,
+        sign INTEGER NOT NULL,
+        format TEXT,
+        raw_text TEXT NOT NULL,
+        value REAL NOT NULL,
+        scaled_value REAL NOT NULL,
+        period_relation TEXT NOT NULL,
+        period_kind TEXT NOT NULL,
+        period_start TEXT,
+        period_end TEXT,
+        period_scope TEXT NOT NULL,
+        quarter INTEGER,
+        consolidation TEXT NOT NULL,
+        actual_forecast TEXT NOT NULL,
+        context_status TEXT NOT NULL,
+        unresolved_reasons TEXT NOT NULL,
+        dimensions TEXT NOT NULL,
+        source_file TEXT NOT NULL
+      )
+    `);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_tdnet_financial_facts_document ON tdnet_financial_facts(document_id)`);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tdnet_financial_summary (
+        document_id TEXT PRIMARY KEY,
+        ticker TEXT,
+        company_name TEXT,
+        title TEXT,
+        published_at TEXT,
+        xbrl_url TEXT,
+        period_type TEXT,
+        period_start TEXT,
+        period_end TEXT,
+        prior_period_start TEXT,
+        prior_period_end TEXT,
+        accounting_standard TEXT,
+        is_consolidated INTEGER,
+        is_revision INTEGER NOT NULL DEFAULT 0,
+        current_net_sales REAL,
+        current_operating_income REAL,
+        current_ordinary_income REAL,
+        current_net_income REAL,
+        current_net_assets REAL,
+        current_total_assets REAL,
+        current_operating_cf REAL,
+        current_investing_cf REAL,
+        current_cash_and_equivalents REAL,
+        current_eps REAL,
+        current_bps REAL,
+        current_dividend_per_share REAL,
+        current_number_of_employees REAL,
+        prior_net_sales REAL,
+        prior_operating_income REAL,
+        prior_ordinary_income REAL,
+        prior_net_income REAL,
+        prior_net_assets REAL,
+        prior_total_assets REAL,
+        prior_operating_cf REAL,
+        prior_investing_cf REAL,
+        prior_cash_and_equivalents REAL,
+        prior_eps REAL,
+        prior_bps REAL,
+        prior_dividend_per_share REAL,
+        prior_number_of_employees REAL,
+        operating_margin_current REAL,
+        operating_margin_prior REAL,
+        operating_margin_delta REAL,
+        net_sales_growth_rate REAL,
+        operating_income_growth_rate REAL,
+        free_cash_flow_current REAL,
+        free_cash_flow_prior REAL,
+        equity_ratio_current REAL,
+        equity_ratio_prior REAL,
+        roe_current REAL,
+        roe_prior REAL,
+        roa_current REAL,
+        roa_prior REAL,
+        operating_income_per_employee REAL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
   }
 
   public insertDocument(doc: TdnetDocument) {
@@ -162,6 +311,284 @@ export class DbClient {
       retryCount: Number(row.retry_count || 0),
       createdAt: row.created_at,
     }));
+  }
+
+  public insertXbrlDocument(record: XbrlDocumentRecord) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO tdnet_xbrl_documents (
+        document_id, xbrl_url, status, period_type, period_start, period_end,
+        accounting_standard, is_consolidated, is_revision, fact_count, error,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      record.documentId,
+      record.xbrlUrl,
+      record.status,
+      record.periodType,
+      record.periodStart,
+      record.periodEnd,
+      record.accountingStandard,
+      booleanToInteger(record.isConsolidated),
+      record.isRevision ? 1 : 0,
+      record.factCount,
+      record.error,
+      record.createdAt,
+      record.updatedAt,
+    );
+  }
+
+  public getXbrlDocument(documentId: string): XbrlDocumentRecord | undefined {
+    const row = this.db.prepare(`SELECT * FROM tdnet_xbrl_documents WHERE document_id = ?`).get(documentId) as Record<string, any> | undefined;
+    if (!row) return undefined;
+    return {
+      documentId: String(row.document_id),
+      xbrlUrl: row.xbrl_url ?? null,
+      status: row.status,
+      periodType: row.period_type ?? null,
+      periodStart: row.period_start ?? null,
+      periodEnd: row.period_end ?? null,
+      accountingStandard: row.accounting_standard ?? null,
+      isConsolidated: row.is_consolidated === null || row.is_consolidated === undefined ? null : Boolean(row.is_consolidated),
+      isRevision: Boolean(row.is_revision),
+      factCount: Number(row.fact_count ?? 0),
+      error: row.error ?? null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  /** 指定文書の Fact を全件入れ替える。数値 Fact は未解決 Context も含めて保存する。 */
+  public replaceFinancialFacts(documentId: string, facts: ResolvedFact[]) {
+    this.db.prepare(`DELETE FROM tdnet_financial_facts WHERE document_id = ?`).run(documentId);
+    const columns = [
+      'document_id', 'concept', 'name', 'namespace', 'context_id', 'unit_ref', 'decimals',
+      'scale', 'sign', 'format', 'raw_text', 'value', 'scaled_value', 'period_relation',
+      'period_kind', 'period_start', 'period_end', 'period_scope', 'quarter', 'consolidation',
+      'actual_forecast', 'context_status', 'unresolved_reasons', 'dimensions', 'source_file',
+    ];
+    const stmt = this.db.prepare(`
+      INSERT INTO tdnet_financial_facts (${columns.join(', ')})
+      VALUES (${columns.map(() => '?').join(', ')})
+    `);
+    for (const fact of facts) {
+      stmt.run(
+        documentId,
+        fact.concept,
+        fact.name,
+        fact.namespace,
+        fact.contextRef,
+        fact.unitRef,
+        fact.decimals,
+        fact.scale,
+        fact.sign,
+        fact.format,
+        fact.rawText,
+        fact.value,
+        fact.scaledValue,
+        fact.periodRelation,
+        fact.periodKind,
+        fact.periodStart,
+        fact.periodEnd,
+        fact.periodScope,
+        fact.quarter,
+        fact.consolidation,
+        fact.actualForecast,
+        fact.contextStatus,
+        JSON.stringify(fact.unresolvedReasons),
+        JSON.stringify(fact.dimensions),
+        fact.sourceFile,
+      );
+    }
+  }
+
+  public getFinancialFacts(documentId: string): StoredFinancialFact[] {
+    const rows = this.db.prepare(`SELECT * FROM tdnet_financial_facts WHERE document_id = ?`).all(documentId) as Record<string, any>[];
+    return rows.map(row => ({
+      concept: String(row.concept),
+      name: String(row.name),
+      namespace: row.namespace ?? null,
+      contextRef: String(row.context_id),
+      unitRef: row.unit_ref ?? null,
+      decimals: row.decimals ?? null,
+      scale: Number(row.scale),
+      sign: Number(row.sign) === -1 ? -1 : 1,
+      format: row.format ?? null,
+      rawText: String(row.raw_text),
+      value: Number(row.value),
+      scaledValue: Number(row.scaled_value),
+      sourceFile: String(row.source_file),
+      periodRelation: row.period_relation,
+      periodKind: row.period_kind,
+      periodStart: row.period_start ?? null,
+      periodEnd: row.period_end ?? null,
+      periodScope: row.period_scope,
+      quarter: row.quarter === null || row.quarter === undefined ? null : Number(row.quarter),
+      consolidation: row.consolidation,
+      actualForecast: row.actual_forecast,
+      contextStatus: row.context_status,
+      unresolvedReasons: JSON.parse(String(row.unresolved_reasons)) as string[],
+      dimensions: JSON.parse(String(row.dimensions)) as XbrlDimension[],
+    }));
+  }
+
+  public insertFinancialSummary(summary: ExtractedFinancialSummary, now: string = new Date().toISOString()) {
+    const values: Record<string, string | number | null> = {
+      document_id: summary.documentId,
+      ticker: summary.ticker,
+      company_name: summary.companyName,
+      title: summary.title,
+      published_at: summary.publishedAt,
+      xbrl_url: summary.xbrlUrl,
+      period_type: summary.periodType,
+      period_start: summary.periodStart,
+      period_end: summary.periodEnd,
+      prior_period_start: summary.priorPeriodStart,
+      prior_period_end: summary.priorPeriodEnd,
+      accounting_standard: summary.accountingStandard,
+      is_consolidated: booleanToInteger(summary.isConsolidated),
+      is_revision: summary.isRevision ? 1 : 0,
+      current_net_sales: nullableNumber(summary.current.netSales),
+      current_operating_income: nullableNumber(summary.current.operatingIncome),
+      current_ordinary_income: nullableNumber(summary.current.ordinaryIncome),
+      current_net_income: nullableNumber(summary.current.netIncome),
+      current_net_assets: nullableNumber(summary.current.netAssets),
+      current_total_assets: nullableNumber(summary.current.totalAssets),
+      current_operating_cf: nullableNumber(summary.current.operatingCashFlow),
+      current_investing_cf: nullableNumber(summary.current.investingCashFlow),
+      current_cash_and_equivalents: nullableNumber(summary.current.cashAndEquivalents),
+      current_eps: nullableNumber(summary.current.eps),
+      current_bps: nullableNumber(summary.current.bps),
+      current_dividend_per_share: nullableNumber(summary.current.dividendPerShare),
+      current_number_of_employees: nullableInteger(summary.current.numberOfEmployees),
+      prior_net_sales: nullableNumber(summary.prior.netSales),
+      prior_operating_income: nullableNumber(summary.prior.operatingIncome),
+      prior_ordinary_income: nullableNumber(summary.prior.ordinaryIncome),
+      prior_net_income: nullableNumber(summary.prior.netIncome),
+      prior_net_assets: nullableNumber(summary.prior.netAssets),
+      prior_total_assets: nullableNumber(summary.prior.totalAssets),
+      prior_operating_cf: nullableNumber(summary.prior.operatingCashFlow),
+      prior_investing_cf: nullableNumber(summary.prior.investingCashFlow),
+      prior_cash_and_equivalents: nullableNumber(summary.prior.cashAndEquivalents),
+      prior_eps: nullableNumber(summary.prior.eps),
+      prior_bps: nullableNumber(summary.prior.bps),
+      prior_dividend_per_share: nullableNumber(summary.prior.dividendPerShare),
+      prior_number_of_employees: nullableInteger(summary.prior.numberOfEmployees),
+      operating_margin_current: nullableNumber(summary.indicators.operatingMarginCurrent),
+      operating_margin_prior: nullableNumber(summary.indicators.operatingMarginPrior),
+      operating_margin_delta: nullableNumber(summary.indicators.operatingMarginDelta),
+      net_sales_growth_rate: nullableNumber(summary.indicators.netSalesGrowthRate),
+      operating_income_growth_rate: nullableNumber(summary.indicators.operatingIncomeGrowthRate),
+      free_cash_flow_current: nullableNumber(summary.indicators.freeCashFlowCurrent),
+      free_cash_flow_prior: nullableNumber(summary.indicators.freeCashFlowPrior),
+      equity_ratio_current: nullableNumber(summary.indicators.equityRatioCurrent),
+      equity_ratio_prior: nullableNumber(summary.indicators.equityRatioPrior),
+      roe_current: nullableNumber(summary.indicators.roeCurrent),
+      roe_prior: nullableNumber(summary.indicators.roePrior),
+      roa_current: nullableNumber(summary.indicators.roaCurrent),
+      roa_prior: nullableNumber(summary.indicators.roaPrior),
+      operating_income_per_employee: nullableNumber(summary.indicators.operatingIncomePerEmployee),
+      created_at: now,
+      updated_at: now,
+    };
+    const columns = Object.keys(values);
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO tdnet_financial_summary (${columns.join(', ')})
+      VALUES (${columns.map(() => '?').join(', ')})
+    `);
+    stmt.run(...Object.values(values));
+  }
+
+  public getFinancialSummary(documentId: string): ExtractedFinancialSummary | undefined {
+    const row = this.db.prepare(`SELECT * FROM tdnet_financial_summary WHERE document_id = ?`).get(documentId) as Record<string, any> | undefined;
+    if (!row) return undefined;
+    return {
+      documentId: String(row.document_id),
+      ticker: row.ticker ?? null,
+      companyName: row.company_name ?? null,
+      title: row.title ?? null,
+      publishedAt: row.published_at ?? null,
+      xbrlUrl: row.xbrl_url ?? null,
+      periodType: row.period_type ?? 'unknown',
+      periodStart: row.period_start ?? null,
+      periodEnd: row.period_end ?? null,
+      priorPeriodStart: row.prior_period_start ?? null,
+      priorPeriodEnd: row.prior_period_end ?? null,
+      accountingStandard: row.accounting_standard ?? 'unknown',
+      isConsolidated: row.is_consolidated === null || row.is_consolidated === undefined ? null : Boolean(row.is_consolidated),
+      isRevision: Boolean(row.is_revision),
+      current: {
+        netSales: numberOrUndefined(row.current_net_sales),
+        operatingIncome: numberOrUndefined(row.current_operating_income),
+        ordinaryIncome: numberOrUndefined(row.current_ordinary_income),
+        netIncome: numberOrUndefined(row.current_net_income),
+        netAssets: numberOrUndefined(row.current_net_assets),
+        totalAssets: numberOrUndefined(row.current_total_assets),
+        operatingCashFlow: numberOrUndefined(row.current_operating_cf),
+        investingCashFlow: numberOrUndefined(row.current_investing_cf),
+        cashAndEquivalents: numberOrUndefined(row.current_cash_and_equivalents),
+        eps: numberOrUndefined(row.current_eps),
+        bps: numberOrUndefined(row.current_bps),
+        dividendPerShare: numberOrUndefined(row.current_dividend_per_share),
+        numberOfEmployees: numberOrUndefined(row.current_number_of_employees),
+      },
+      prior: {
+        netSales: numberOrUndefined(row.prior_net_sales),
+        operatingIncome: numberOrUndefined(row.prior_operating_income),
+        ordinaryIncome: numberOrUndefined(row.prior_ordinary_income),
+        netIncome: numberOrUndefined(row.prior_net_income),
+        netAssets: numberOrUndefined(row.prior_net_assets),
+        totalAssets: numberOrUndefined(row.prior_total_assets),
+        operatingCashFlow: numberOrUndefined(row.prior_operating_cf),
+        investingCashFlow: numberOrUndefined(row.prior_investing_cf),
+        cashAndEquivalents: numberOrUndefined(row.prior_cash_and_equivalents),
+        eps: numberOrUndefined(row.prior_eps),
+        bps: numberOrUndefined(row.prior_bps),
+        dividendPerShare: numberOrUndefined(row.prior_dividend_per_share),
+        numberOfEmployees: numberOrUndefined(row.prior_number_of_employees),
+      },
+      indicators: {
+        operatingMarginCurrent: numberOrUndefined(row.operating_margin_current),
+        operatingMarginPrior: numberOrUndefined(row.operating_margin_prior),
+        operatingMarginDelta: numberOrUndefined(row.operating_margin_delta),
+        netSalesGrowthRate: numberOrUndefined(row.net_sales_growth_rate),
+        operatingIncomeGrowthRate: numberOrUndefined(row.operating_income_growth_rate),
+        freeCashFlowCurrent: numberOrUndefined(row.free_cash_flow_current),
+        freeCashFlowPrior: numberOrUndefined(row.free_cash_flow_prior),
+        equityRatioCurrent: numberOrUndefined(row.equity_ratio_current),
+        equityRatioPrior: numberOrUndefined(row.equity_ratio_prior),
+        roeCurrent: numberOrUndefined(row.roe_current),
+        roePrior: numberOrUndefined(row.roe_prior),
+        roaCurrent: numberOrUndefined(row.roa_current),
+        roaPrior: numberOrUndefined(row.roa_prior),
+        operatingIncomePerEmployee: numberOrUndefined(row.operating_income_per_employee),
+      },
+      usedContextIds: {
+        currentDuration: [],
+        priorDuration: [],
+        currentInstant: [],
+        priorFiscalYearInstant: [],
+        priorPeriodInstant: [],
+      },
+    };
+  }
+
+  /** XBRL 文書・Fact 全件・サマリーを 1 トランザクションで保存する。 */
+  public saveXbrlExtraction(input: {
+    document: XbrlDocumentRecord;
+    facts: ResolvedFact[];
+    summary: ExtractedFinancialSummary;
+  }) {
+    this.db.exec('BEGIN');
+    try {
+      this.insertXbrlDocument(input.document);
+      this.replaceFinancialFacts(input.document.documentId, input.facts);
+      this.insertFinancialSummary(input.summary);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   public getRecentDocuments(limit: number = 50): TdnetDocument[] {
