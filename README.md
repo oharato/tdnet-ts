@@ -55,6 +55,27 @@ npx tdnet-ts sync --date 2026-02-20   # または -d 2026-02-20
 
 # PDFファイルをローカルに保存しながら同期する
 npx tdnet-ts sync --save-pdf web/pdfs
+
+# XBRL だけを取り込む（PDF の取得・変換・保存は行わない）
+npx tdnet-ts sync --date 2023-11-08 --limit 2000 --xbrl-only
+```
+
+#### XBRL専用のバックフィル (--xbrl-only)
+
+`--xbrl-only` は、一覧APIで取得した資料のうち `url_xbrl` があるものだけXBRL ZIPを取得し、決算短信判定・Fact／サマリー保存を行います。PDFのダウンロード・Markdown変換・原本保存は一切行いません。過去日を指定して数値データだけを高速に蓄積する用途を想定しています。
+
+- `url_xbrl` がある資料はXBRL ZIPを取得して決算短信かを判定します。XBRLが無い資料と、XBRLはあるが決算短信でない資料は、PDF経路に回さず `skipped` として `tdnet_xbrl_documents` に記録します。
+- TDnetはXBRLを約30〜40日で削除します。TDnetが403/404を返した場合は、東証上場会社情報サービスの永続URL（`www2.jpx.co.jp/disc/...`）へ自動でフォールバックします。それでも取得できない資料（名証・札証など東証以外の上場会社など、JPXの永続URLに収録されていない資料）は `failed` になります。
+- `parsed` / `skipped` は再取得せず `existing`、`failed` は次回の実行で再試行します。通常同期と同じXBRL状態管理です。
+- `SyncResult.xbrl` に `synced` / `existing` / `skipped` / `failed` と、文書ごとのFact数・バイト数・処理時間を返します。PDF側の集計（`synced` など）は0、`documents` は空です。
+- 全件を取り切るには、その日の開示件数以上の `--limit` を指定してください。`limitReached` は取得上限に達した注意であり、全件取得の保証ではありません。
+- 終了コードは通常同期と同じ流儀です。XBRL専用モードでは、XBRLの失敗がある場合に終了コード2を返します。
+- 検証用DBを本番と分ける場合は `--db ./backfill-test.sqlite` のように指定します。
+
+ライブラリAPIでは `xbrlOnly: true` を指定します。
+
+```typescript
+await manager.sync({ date: '2023-11-08', limit: 2000, xbrlOnly: true });
 ```
 
 #### 決算短信XBRLの自動取込
@@ -263,14 +284,15 @@ manager.close();
 - `tdnet_financial_summary` は当期・前期の累計実績を基準に、固定科目セット（売上高/営業収益、営業利益、経常利益、親会社株主に帰属する当期純利益、純資産、総資産、営業CF、投資CF、現金及び現金同等物、EPS、BPS、1株当たり配当金、従業員数）と指標を保存します。
 - 連結Factを優先し、なければ単体を使います。セグメント軸・配当軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。
 - IFRSには経常利益がないため、`ordinaryIncome` は税引前利益を代替として使います。
-- 過去分のバックフィルは対象外です。日次同期で今後分を蓄積します。
+- 過去分の数値データは `sync --xbrl-only` でバックフィルできます。PDF本文の過去分バックフィルは対象外です。
 
 #### 既知の制限
 
 - (a) 1株当たり配当金は、現状のfixtureでは配当軸（`AnnualDividendPaymentScheduleAxis`）付きFactしかなく、サマリーの `current_dividend_per_share` / `prior_dividend_per_share` はnullになります。Fact層には保存されています。
 - (b) 訂正短信は別文書として保持します。同一企業・同一期間の最新版を自動選択する機能は未実装です。検索時は `is_revision` と開示日時を確認してください。
 - (c) BPS・従業員数は、実在fixtureで値が存在せず未検証の項目があります。マッピングと計算式は実装済みですが、実データでの確認が必要です。
-- (d) 過去分のバックフィルは対象外です。日次同期で取得できた分だけを蓄積します。
+- (d) 過去分のPDF本文バックフィルは対象外です。数値データは `sync --xbrl-only` で蓄積できます。
+- (e) 米国基準（US-GAAP）の決算短信は、J-GAAP/IFRS と XBRL の科目名（`NetSalesUS` など）が異なるため、サマリーの主要科目はnullになります（Fact層には保存されます）。財務諸表のテキストブロックが無い資料は決算短信と判定されず `skipped` になることがあります。
 
 #### 処理量の目安
 

@@ -44,7 +44,7 @@ export function disclosureFromApi(data: unknown): TdnetDocument {
     const id = url.pathname.split('/').pop()?.replace(/\.pdf$/i, '') || String(item.id ?? '');
     if (!/^[a-zA-Z0-9_.-]+$/.test(id) || id === '.' || id === '..') throw new Error('Invalid document ID.');
     const xbrlUrl = normalizeOptionalUrl(item.url_xbrl, /\.zip$/i);
-    return { id, publishedAt, ticker: code.length === 5 ? code.slice(0, -1) : code,
+    return { id, publishedAt, ticker: code.length === 5 ? code.slice(0, -1) : code, companyCode: code,
         companyName: item.company_name as string, title: item.title as string, documentUrl, xbrlUrl,
         content: null, retryCount: 0, createdAt: new Date().toISOString() };
 }
