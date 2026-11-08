@@ -1,13 +1,29 @@
 import { ApiClient } from './api.js';
 import { DbClient } from './db.js';
+import type { FinancialScreenOptions, FinancialSummaryRow } from './db.js';
+import { extractFinancialSummaryFromFacts } from './financial/extractor.js';
+import type { AccountingStandard, ExtractedFinancialSummary } from './financial/extractor.js';
 import { PdfParser } from './parser.js';
-import { TdnetDocument, SearchOptions, SyncResult, SyncStatus, RecoveryResult } from './types.js';
+import { TdnetDocument, SearchOptions, SyncResult, SyncStatus, RecoveryResult, XbrlSyncResult } from './types.js';
 import { delay } from './utils.js';
 import { disclosureFromApi, validateSyncOptions } from './sync-input.js';
+import { parseXbrlZip } from './xbrl/parser.js';
+import { resolveFacts } from './xbrl/context.js';
+import { classifyXbrlDocument } from './xbrl/classify.js';
+import { XbrlDownloader } from './xbrl/download.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 export * from './types.js';
+export type { FinancialScreenOptions, FinancialSummaryRow } from './db.js';
+export type {
+    AccountingStandard,
+    ExtractedFinancialSummary,
+    FinancialExtractionMetadata,
+    FinancialIndicators,
+    FinancialMetrics,
+    FinancialPeriodType,
+} from './financial/extractor.js';
 export { ApiClient, DbClient, PdfParser };
 
 export interface SyncOptions {
@@ -18,6 +34,13 @@ export interface SyncOptions {
     concurrency?: number;     // 並列処理数 (デフォルト2)
 }
 
+function accountingStandardFromXbrl(value: string | null): AccountingStandard | undefined {
+    if (!value) return undefined;
+    if (/IFRS/i.test(value)) return 'IFRS';
+    if (/Japan|J-GAAP|日本/i.test(value)) return 'J-GAAP';
+    return undefined;
+}
+
 /**
  * TDnetの統合管理クラス
  */
@@ -25,11 +48,13 @@ export class TdnetManager {
     private api: ApiClient;
     private db: DbClient;
     private parser: PdfParser;
+    private xbrlDownloader: XbrlDownloader;
 
     constructor(dbPath?: string) {
         this.api = new ApiClient();
         this.db = new DbClient(dbPath);
         this.parser = new PdfParser();
+        this.xbrlDownloader = new XbrlDownloader();
     }
 
     /**
@@ -41,7 +66,8 @@ export class TdnetManager {
         const apiData = options.date ? await this.api.fetchByDate(options.date, limit) : await this.api.fetchRecent(limit);
         if (!Array.isArray(apiData.items)) throw new Error('Invalid API response: items must be an array.');
         const result: SyncResult = { received: apiData.items.length, duplicates: 0, invalid: 0, synced: 0, existing: 0,
-            failed: 0, exhausted: 0, unsupported: 0, pdfSaveFailed: 0, limitReached: apiData.items.length >= limit, documents: [] };
+            failed: 0, exhausted: 0, unsupported: 0, pdfSaveFailed: 0, limitReached: apiData.items.length >= limit, documents: [],
+            xbrl: { synced: 0, existing: 0, skipped: 0, failed: 0, unsupported: 0, documents: [] } };
         const seen = new Set<string>();
         const queue: { doc: TdnetDocument; status?: SyncStatus; attempts: number; pdfSaveFailed: boolean }[] = [];
         for (const item of apiData.items) {
@@ -54,7 +80,7 @@ export class TdnetManager {
             const status: SyncStatus | undefined = existing && existing.content !== null ? 'existing'
                 : !/\.pdf$/i.test(new URL(doc.documentUrl).pathname) ? 'unsupported'
                 : doc.retryCount >= 3 ? 'exhausted' : undefined;
-            if (status === 'existing') doc = existing!; // Keep body and its source URL together.
+            if (status === 'existing') doc = { ...existing!, xbrlUrl: doc.xbrlUrl }; // Keep body and its source URL together.
             if (status === 'unsupported') this.db.insertDocument(doc);
             queue.push({ doc, status, attempts: 0, pdfSaveFailed: false });
         }
@@ -94,6 +120,8 @@ export class TdnetManager {
                 if (i + 1 < existing.length) await delay(downloadDelayMs);
             }
         }
+        // XBRL is an independent pipeline: its failures must not change PDF outcomes.
+        await this.syncXbrl(queue.map(item => item.doc), result.xbrl, downloadDelayMs);
         for (const item of queue) {
             const status = item.status ?? 'failed';
             result[status]++;
@@ -150,6 +178,117 @@ export class TdnetManager {
         return result;
     }
 
+    /**
+     * XBRL ZIP の取得・判定・解析・保存を PDF 経路から独立して行う。
+     * 失敗しても PDF の同期結果には影響させない。
+     */
+    private async syncXbrl(docs: TdnetDocument[], result: XbrlSyncResult, downloadDelayMs: number): Promise<void> {
+        const candidates = docs.filter(doc => Boolean(doc.xbrlUrl));
+        for (let i = 0; i < candidates.length; i++) {
+            const doc = candidates[i];
+            const existing = this.db.getXbrlDocument(doc.id);
+            if (existing && (existing.status === 'parsed' || existing.status === 'skipped')) {
+                result.existing++;
+                result.documents.push({ id: doc.id, status: 'existing', factCount: existing.factCount });
+                continue;
+            }
+
+            const now = new Date().toISOString();
+            const createdAt = existing?.createdAt ?? now;
+            const startedAt = Date.now();
+            let bytes: number | undefined;
+            try {
+                const xbrlUrl = doc.xbrlUrl!;
+                const buffer = await this.xbrlDownloader.download(xbrlUrl);
+                bytes = buffer.byteLength;
+                const parsed = await parseXbrlZip(buffer);
+                const classification = classifyXbrlDocument(parsed);
+                const accountingStandard = accountingStandardFromXbrl(classification.accountingStandard)
+                    ?? classification.accountingStandard;
+                // 訂正フラグは XBRL に無い場合があるため、API タイトルの訂正表記も補助的に使う。
+                const isRevision = classification.isRevision || doc.title.includes('訂正');
+
+                if (!classification.isFinancialSummary) {
+                    this.db.insertXbrlDocument({
+                        documentId: doc.id,
+                        xbrlUrl,
+                        status: 'skipped',
+                        periodType: classification.typeOfCurrentPeriod,
+                        periodStart: null,
+                        periodEnd: null,
+                        accountingStandard,
+                        isConsolidated: null,
+                        isRevision,
+                        factCount: 0,
+                        error: null,
+                        createdAt,
+                        updatedAt: now,
+                    });
+                    result.skipped++;
+                    result.documents.push({ id: doc.id, status: 'skipped', factCount: 0, bytes, durationMs: Date.now() - startedAt });
+                    continue;
+                }
+
+                const facts = resolveFacts(parsed);
+                const summary = extractFinancialSummaryFromFacts(facts, {
+                    documentId: doc.id,
+                    ticker: doc.ticker,
+                    companyName: doc.companyName,
+                    title: doc.title,
+                    publishedAt: doc.publishedAt,
+                    xbrlUrl,
+                    isRevision,
+                    accountingStandard: accountingStandardFromXbrl(classification.accountingStandard),
+                });
+                this.db.saveXbrlExtraction({
+                    document: {
+                        documentId: doc.id,
+                        xbrlUrl,
+                        status: 'parsed',
+                        periodType: summary.periodType,
+                        periodStart: summary.periodStart,
+                        periodEnd: summary.periodEnd,
+                        accountingStandard: summary.accountingStandard,
+                        isConsolidated: summary.isConsolidated,
+                        isRevision: summary.isRevision,
+                        factCount: facts.length,
+                        error: null,
+                        createdAt,
+                        updatedAt: now,
+                    },
+                    facts,
+                    summary,
+                });
+                result.synced++;
+                result.documents.push({ id: doc.id, status: 'synced', factCount: facts.length, bytes, durationMs: Date.now() - startedAt });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                try {
+                    this.db.insertXbrlDocument({
+                        documentId: doc.id,
+                        xbrlUrl: doc.xbrlUrl ?? null,
+                        status: 'failed',
+                        periodType: null,
+                        periodStart: null,
+                        periodEnd: null,
+                        accountingStandard: null,
+                        isConsolidated: null,
+                        isRevision: doc.title.includes('訂正'),
+                        factCount: 0,
+                        error: message,
+                        createdAt,
+                        updatedAt: new Date().toISOString(),
+                    });
+                } catch {
+                    // XBRL の状態記録に失敗しても PDF 同期は継続する。
+                }
+                result.failed++;
+                result.documents.push({ id: doc.id, status: 'failed', bytes, durationMs: Date.now() - startedAt, error: message });
+            }
+            if (i + 1 < candidates.length) await delay(downloadDelayMs);
+        }
+    }
+
     /** Read an existing regular original or download once and save before parsing. Never overwrite it. */
     private async loadOriginal(doc: TdnetDocument, directory: string | undefined, timeoutMs: number): Promise<{ buffer: Uint8Array; saved: boolean; saveFailed: boolean }> {
         if (!/^[a-zA-Z0-9_.-]+$/.test(doc.id) || doc.id === '.' || doc.id === '..') throw new Error('Unsafe document ID.');
@@ -191,6 +330,13 @@ export class TdnetManager {
      */
     public search(keyword: string | undefined, options?: SearchOptions): TdnetDocument[] {
         return this.db.searchDocuments(keyword, options);
+    }
+
+    /**
+     * tdnet_financial_summary を SQL の WHERE 条件式で検索する。
+     */
+    public screenFinancials(options?: FinancialScreenOptions): FinancialSummaryRow[] {
+        return this.db.screenFinancials(options);
     }
 
     /**
