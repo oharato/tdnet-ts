@@ -6,6 +6,7 @@ TDnet（東京証券取引所適時開示情報）APIから開示情報および
 - **[ヤノシン TDnet API](https://webapi.yanoshin.jp/tdnet/)** に対応し、指定日や直近の適時開示情報を取得
 - PDF内テキストを `@oharato/pdf2md-ts` を利用してMarkdownとして抽出・保存
 - `--save-pdf` オプションでダウンロードしたPDF原本もローカルに保存可能
+- **決算短信XBRL対応**: 一覧APIの `url_xbrl` からXBRL ZIPを取得し、決算短信の数値Fact・財務サマリーをSQLiteへ自動保存。`screen` / `schema` / `parse` で検索・確認
 - Node.js v24 組み込みの `node:sqlite` によるデータベース管理
 - コマンドラインツール(CLI)と、アプリケーションから直接利用できるライブラリ(ESM・TypeScript型定義付き)の両方を提供
 - **モダンな Web ビューアー**: 全適時開示情報を2カラムレイアウトで閲覧（ダーク/ライトモード対応）
@@ -55,6 +56,17 @@ npx tdnet-ts sync --date 2026-02-20   # または -d 2026-02-20
 # PDFファイルをローカルに保存しながら同期する
 npx tdnet-ts sync --save-pdf web/pdfs
 ```
+
+#### 決算短信XBRLの自動取込
+
+`sync` はPDF経路とは独立して、一覧APIの `url_xbrl` にXBRL ZIPがある資料も取得します。XBRLの `DocumentName`、`QuarterlyPeriod` / `TypeOfCurrentPeriodDEI`、財務諸表の有無から決算短信かどうかを判定し、決算短信であれば数値Fact全件と当期・前期の財務サマリーを保存します。APIのタイトルだけでは判定しません。
+
+- 数値Factは `tdnet_financial_facts` に全件保存します。テキストFactは判定にだけ使い、保存は保留しています。
+- 四半期単独値・業績予想・配当予想もFact層には保存します。`tdnet_financial_summary` は当期・前期の累計実績を基準に作ります。
+- 連結Factを優先し、連結がなければ単体を使います。セグメント軸・配当軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。
+- XBRL取込済み（`parsed`）または決算短信でないと判定済み（`skipped`）の資料は再取得しません。失敗（`failed`）は次回の同期で再試行します。
+- PDF変換の失敗とXBRLの失敗は互いに独立です。結果は `SyncResult.xbrl` に `synced` / `existing` / `skipped` / `failed` と、Fact数・ダウンロードバイト数・処理時間を返します。
+- 訂正短信は元の文書と別の `document_id` として保存します。最新版を自動選択する機能はありません。
 
 #### 一覧APIの待機と再試行
 
@@ -189,7 +201,82 @@ DBに保存した会社名・タイトル・本文と検索結果の原文は変
 
 実際に探したい開示と関連/除外の判断例、件数・待ち時間の条件が揃ってから、あいまい検索やベクトル検索の採否を比較します。評価用と最終確認用の実例を分ける必要があり、この小さな固定セットを未知資料の精度検証の代わりにはしません。
 
-### 3. Webビューアー
+### 3. 決算短信XBRLの検索・確認 (screen / schema / parse)
+
+`sync` で取り込んだ財務データは、文書ごとの状態を持つ `tdnet_xbrl_documents`、数値Fact全件の `tdnet_financial_facts`、1文書=1行の `tdnet_financial_summary` に保存されます。既存の `tdnet_documents`（PDF・Markdown検索）は変更していません。
+
+#### screen
+
+`tdnet_financial_summary` に対して `--where` のSQL条件式をそのまま適用します。絞り込み用の個別オプションは増やさず、カラム名は `schema` で確認できます。既定は50件、`period_end DESC, document_id ASC` の順です。
+
+```bash
+# 当期営業利益率15%以上
+npx tdnet-ts screen --where "operating_margin_current >= 0.15"
+
+# 高ROEかつ自己資本比率50%以上をJSONで出力
+npx tdnet-ts screen --where "roe_current >= 0.15 AND equity_ratio_current >= 0.50" --json
+
+# 期末日で絞り、ページングする
+npx tdnet-ts screen --where "period_end >= '2026-04-01'" --limit 100 --offset 0
+```
+
+`--json` はDBカラムに対応するフラットなcamelCase（例: `currentNetSales`, `operatingMarginCurrent`）を返します。端末では主要指標を表形式で表示します。
+
+#### schema
+
+`tdnet_financial_summary` と `tdnet_financial_facts` のカラム名・型・単位・説明・条件指定例を表示します。`--json` は `columns`（summary）、`tables`（両テーブル）、`examples` を返します。
+
+```bash
+npx tdnet-ts schema
+npx tdnet-ts schema --json
+```
+
+#### parse
+
+単一のXBRL ZIPを解析し、Fact数・Context数・未解決Context・決算短信判定・抽出サマリーを確認します。`--json` は数値Fact、Context、判定に使ったテキストFact、無視したFactも返します。
+
+```bash
+npx tdnet-ts parse ./path/to/xbrl.zip
+npx tdnet-ts parse ./path/to/xbrl.zip --json
+```
+
+#### ライブラリAPI
+
+```typescript
+import { TdnetManager } from 'tdnet-ts';
+
+const manager = new TdnetManager();
+const rows = manager.screenFinancials({
+  where: 'operating_margin_current >= 0.15',
+  limit: 20,
+});
+console.log(rows[0].currentNetSales, rows[0].roeCurrent);
+manager.close();
+```
+
+`screenFinancials` の引数 `FinancialScreenOptions` と戻り値 `FinancialSummaryRow` を公開しています。
+
+#### 対象範囲と保存方針
+
+- 対象は決算短信のXBRLのみです。判定はAPIタイトルではなく、XBRLの `DocumentName`、四半期情報、財務諸表の有無で行います。
+- 数値Factは未解決Context・四半期単独・予想も含めて全件保存します。テキストFactは判定にだけ使い、保存は保留しています。
+- `tdnet_financial_summary` は当期・前期の累計実績を基準に、固定科目セット（売上高/営業収益、営業利益、経常利益、親会社株主に帰属する当期純利益、純資産、総資産、営業CF、投資CF、現金及び現金同等物、EPS、BPS、1株当たり配当金、従業員数）と指標を保存します。
+- 連結Factを優先し、なければ単体を使います。セグメント軸・配当軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。
+- IFRSには経常利益がないため、`ordinaryIncome` は税引前利益を代替として使います。
+- 過去分のバックフィルは対象外です。日次同期で今後分を蓄積します。
+
+#### 既知の制限
+
+- (a) 1株当たり配当金は、現状のfixtureでは配当軸（`AnnualDividendPaymentScheduleAxis`）付きFactしかなく、サマリーの `current_dividend_per_share` / `prior_dividend_per_share` はnullになります。Fact層には保存されています。
+- (b) 訂正短信は別文書として保持します。同一企業・同一期間の最新版を自動選択する機能は未実装です。検索時は `is_revision` と開示日時を確認してください。
+- (c) BPS・従業員数は、実在fixtureで値が存在せず未検証の項目があります。マッピングと計算式は実装済みですが、実データでの確認が必要です。
+- (d) 過去分のバックフィルは対象外です。日次同期で取得できた分だけを蓄積します。
+
+#### 処理量の目安
+
+2026-11-04〜06の3日分、全XBRL 486件をPDFを除くXBRL単独経路で処理した実測では、426件を決算短信として取り込み、失敗0件でした。平均は約64.7KB/候補、約92ms/候補、DB増加は約165KB/サマリー（約327 Fact/件）です。PDFを含む同時フル同期の時間・通信量は別途測定が必要です。
+
+### 4. Webビューアー
 
 ダウンロードした適時開示情報をブラウザで閲覧できるWebビューアーが付属しています。
 
@@ -244,6 +331,7 @@ Webはサーバーへの検索API接続ではなく、`export.json` のローカ
 ```bash
 npx tdnet-ts sync --db /path/to/my-db.sqlite
 npx tdnet-ts search "決算" --db /path/to/my-db.sqlite
+npx tdnet-ts screen --where "roe_current >= 0.15" --db /path/to/my-db.sqlite
 ```
 
 ---
@@ -299,6 +387,7 @@ async function main() {
       // companyName: string   — 会社名
       // title: string         — 件名
       // documentUrl: string   — PDFのURL
+      // xbrlUrl?: string|null — XBRL ZIPのURL (ない場合はnull)
       // content: string|null  — 変換されたMarkdown本文
       // createdAt: string     — レコード作成日時
       console.log(`[${doc.publishedAt}] ${doc.companyName} (${doc.ticker})`);
@@ -335,6 +424,8 @@ GitHub Actions を利用して、定期的なデータの更新と GitHub Pages 
 ## 構成・設計
 
 構成の詳細は [docs/SPECIFICATIONS.md](./docs/SPECIFICATIONS.md) を参照してください。
+
+決算短信XBRL対応の設計は [docs/design-quarterly-earnings.md](./docs/design-quarterly-earnings.md)、前提調査は [docs/survey-quarterly-earnings.md](./docs/survey-quarterly-earnings.md) を参照してください。
 
 現行実装の確認結果と今後の優先順位は [2026-10-24 改善計画](./docs/plans/2026-10-24-maintenance-plan.md) を参照してください。取得・復旧の保守と、キーワード・あいまい・ベクトル検索の段階的な改善を評価する計画です（検索拡張は未実装）。
 
