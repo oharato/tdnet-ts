@@ -96,7 +96,9 @@ export async function runCli(args: string[] = process.argv.slice(2)) {
                 const result = await getManager().sync({ limit, date, savePdfDir, xbrlOnly });
                 console.log(JSON.stringify(result, null, 2));
                 // XBRL 専用モードでは PDF の集計は常に 0 なので、XBRL の失敗を終了コードに反映する。
-                if (result.failed || result.invalid || result.exhausted || result.unsupported || result.pdfSaveFailed
+                // invalid は TDnet API レコード側の形式不正（disclosureFromApi の変換エラー）であり、
+                // 取り込み処理自体の失敗ではないため、終了コードには反映しない（集計には残す）。
+                if (result.failed || result.exhausted || result.unsupported || result.pdfSaveFailed
                     || (xbrlOnly && result.xbrl.failed)) process.exitCode = 2;
                 break;
             }
