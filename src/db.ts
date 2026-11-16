@@ -45,8 +45,54 @@ function numberOrUndefined(value: unknown): number | undefined {
   return value === null || value === undefined ? undefined : Number(value);
 }
 
+/** tdnet_financial_summary の数値カラム。1つでも値があればサマリーとして扱う。 */
+const FINANCIAL_SUMMARY_VALUE_COLUMNS = [
+  'current_net_sales',
+  'current_operating_income',
+  'current_ordinary_income',
+  'current_net_income',
+  'current_net_assets',
+  'current_total_assets',
+  'current_operating_cf',
+  'current_investing_cf',
+  'current_cash_and_equivalents',
+  'current_eps',
+  'current_bps',
+  'current_dividend_per_share',
+  'current_number_of_employees',
+  'prior_net_sales',
+  'prior_operating_income',
+  'prior_ordinary_income',
+  'prior_net_income',
+  'prior_net_assets',
+  'prior_total_assets',
+  'prior_operating_cf',
+  'prior_investing_cf',
+  'prior_cash_and_equivalents',
+  'prior_eps',
+  'prior_bps',
+  'prior_dividend_per_share',
+  'prior_number_of_employees',
+  'operating_margin_current',
+  'operating_margin_prior',
+  'operating_margin_delta',
+  'net_sales_growth_rate',
+  'operating_income_growth_rate',
+  'free_cash_flow_current',
+  'free_cash_flow_prior',
+  'equity_ratio_current',
+  'equity_ratio_prior',
+  'roe_current',
+  'roe_prior',
+  'roa_current',
+  'roa_prior',
+  'operating_income_per_employee',
+] as const;
+
+const SUMMARY_HAS_VALUES_SQL = `(${FINANCIAL_SUMMARY_VALUE_COLUMNS.map(column => `${column} IS NOT NULL`).join(' OR ')})`;
+
 export interface FinancialScreenOptions {
-  /** tdnet_financial_summary に対する SQL の WHERE 条件式。 */
+  /** tdnet_financial_summary_latest に対する SQL の WHERE 条件式。 */
   where?: string;
   limit?: number;
   offset?: number;
@@ -383,6 +429,28 @@ export class DbClient {
         updated_at TEXT NOT NULL
       )
     `);
+    // 同一企業・同一期末日の最新版だけを返す読み取り用 VIEW。
+    // 訂正版は別 document_id で保存されるため、既存行は変更せず読み取り時に最新を選ぶ。
+    // 数値が全nullの行は版の候補から外し、抽出失敗行が有効な行を隠さないようにする。
+    this.db.exec(`
+      CREATE VIEW IF NOT EXISTS tdnet_financial_summary_latest AS
+      SELECT s.*
+      FROM tdnet_financial_summary s
+      JOIN (
+        SELECT document_id
+        FROM (
+          SELECT document_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY COALESCE(ticker, document_id), period_end
+              ORDER BY published_at DESC, document_id DESC
+            ) AS version_rank
+          FROM tdnet_financial_summary
+          WHERE period_end IS NOT NULL
+            AND ${SUMMARY_HAS_VALUES_SQL}
+        )
+        WHERE version_rank = 1
+      ) latest ON latest.document_id = s.document_id
+    `);
   }
 
   public insertDocument(doc: TdnetDocument) {
@@ -704,9 +772,27 @@ export class DbClient {
     return row ? mapFinancialSummaryRow(row) : undefined;
   }
 
-  /** tdnet_financial_summary を --where の SQL 条件式で検索する。 */
+  /**
+   * 指定文書と同じ企業・期末日の最新版サマリーを返す。
+   * 保存行をそのまま返す getFinancialSummary と違い、訂正版があれば訂正版を返す。
+   * 最新版の候補に数値行がない場合は、指定文書の保存行にフォールバックする。
+   */
+  public getLatestFinancialSummary(documentId: string): ExtractedFinancialSummary | undefined {
+    const row = this.db.prepare(`
+      SELECT latest.*
+      FROM tdnet_financial_summary_latest latest
+      JOIN tdnet_financial_summary stored
+        ON COALESCE(latest.ticker, latest.document_id) = COALESCE(stored.ticker, stored.document_id)
+       AND latest.period_end = stored.period_end
+      WHERE stored.document_id = ?
+    `).get(documentId) as Record<string, any> | undefined;
+    return row ? mapFinancialSummaryRow(row) : this.getFinancialSummary(documentId);
+  }
+
+  /** tdnet_financial_summary_latest を --where の SQL 条件式で検索する。 */
   public screenFinancials(options: FinancialScreenOptions = {}): FinancialSummaryRow[] {
-    let sql = `SELECT * FROM tdnet_financial_summary`;
+    // 同一企業・同一期末日は最新版のみを既定で返す。旧版は tdnet_financial_summary を直接参照する。
+    let sql = `SELECT * FROM tdnet_financial_summary_latest`;
     const params: (string | number)[] = [];
     if (options.where !== undefined && options.where.trim() !== '') {
       sql += ` WHERE (${options.where})`;

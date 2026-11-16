@@ -370,10 +370,18 @@ export class TdnetManager {
     }
 
     /**
-     * tdnet_financial_summary を SQL の WHERE 条件式で検索する。
+     * tdnet_financial_summary_latest を SQL の WHERE 条件式で検索する。
+     * 同一企業・同一期末日は最新版のみを返す。
      */
     public screenFinancials(options?: FinancialScreenOptions): FinancialSummaryRow[] {
         return this.db.screenFinancials(options);
+    }
+
+    /**
+     * 指定文書と同じ企業・期末日の最新版サマリーを返す。
+     */
+    public getLatestFinancialSummary(documentId: string): ExtractedFinancialSummary | undefined {
+        return this.db.getLatestFinancialSummary(documentId);
     }
 
     /**

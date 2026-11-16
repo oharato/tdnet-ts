@@ -329,7 +329,7 @@ Commands:
   sync       Fetch latest disclosures and sync to DB. Parses PDF to markdown.
   recover    Retry saved document IDs; optionally save missing original PDFs.
   search     Search the SQLite DB for given keyword. (keyword is optional)
-  screen     Screen tdnet_financial_summary with a SQL --where expression.
+  screen     Screen latest financial summaries per company and period with a SQL --where expression.
   schema     Show tdnet_financial_summary / tdnet_financial_facts columns.
   parse      Parse a single XBRL ZIP and show facts, contexts and summary.
 
@@ -340,7 +340,7 @@ Options:
   --xbrl-only   (sync only) Ingest only XBRL ZIPs; never download, convert or save PDFs
   --db          Path to SQLite database file (default: ./tdnet.sqlite)
   --json        (search/screen/schema/parse) Output results in JSON format
-  --where, -w   (screen only) SQL WHERE expression for tdnet_financial_summary
+  --where, -w   (screen only) SQL WHERE expression for tdnet_financial_summary_latest
   --content, -c (search only) Include the full converted markdown document content
   --match       (search) legacy (default), literal, all (AND), any (OR)
   --normalize   (search) width-case; requires --match literal, all or any
