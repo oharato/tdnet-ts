@@ -205,6 +205,106 @@ describe('FinancialExtractor: 実在決算短信との突合', () => {
         expect(summary.indicators.operatingIncomePerEmployee).toBe(10_000);
     });
 
+    it('IFRS の連結 BPS を単体の NetAssetsPerShare より優先する', () => {
+        const fact = (overrides: Partial<ResolvedFact> & Pick<ResolvedFact, 'name' | 'scaledValue' | 'periodKind'>): ResolvedFact => ({
+            concept: `tse-ed-t:${overrides.name}`,
+            name: overrides.name,
+            namespace: 'tse-ed-t',
+            contextRef: overrides.contextRef ?? 'CurrentYearInstant_ConsolidatedMember_ResultMember',
+            unitRef: 'JPYPerShares',
+            decimals: null,
+            scale: 0,
+            sign: 1,
+            format: null,
+            rawText: String(overrides.scaledValue),
+            value: overrides.scaledValue,
+            scaledValue: overrides.scaledValue,
+            sourceFile: 'XBRLData/Summary/sample-ixbrl.htm',
+            periodRelation: 'current',
+            periodKind: overrides.periodKind,
+            periodStart: overrides.periodKind === 'duration' ? '2025-09-01' : null,
+            periodEnd: '2026-08-31',
+            periodScope: 'annual',
+            quarter: null,
+            consolidation: 'consolidated',
+            actualForecast: 'actual',
+            contextStatus: 'resolved',
+            unresolvedReasons: [],
+            dimensions: [],
+            ...overrides,
+        });
+        const facts: ResolvedFact[] = [
+            fact({ name: 'NetSales', scaledValue: 1_000_000, periodKind: 'duration' }),
+            fact({ name: 'BasicEarningsPerShareIFRS', scaledValue: 79.9, periodKind: 'duration' }),
+            fact({ name: 'EquityAttributableToOwnersOfParentPerShareIFRS', scaledValue: 451.2, periodKind: 'instant' }),
+            // IFRS 短信でも単体の NetAssetsPerShare が併記される。連結 BPS を優先する。
+            fact({
+                name: 'NetAssetsPerShare',
+                scaledValue: 316.41,
+                periodKind: 'instant',
+                consolidation: 'non_consolidated',
+            }),
+            fact({
+                name: 'EquityAttributableToOwnersOfParentPerShareIFRS',
+                scaledValue: 406.4,
+                periodKind: 'instant',
+                periodRelation: 'prior',
+                periodEnd: '2025-08-31',
+            }),
+            fact({
+                name: 'NetAssetsPerShare',
+                scaledValue: 241.72,
+                periodKind: 'instant',
+                periodRelation: 'prior',
+                periodEnd: '2025-08-31',
+                consolidation: 'non_consolidated',
+            }),
+        ];
+
+        const summary = extractFinancialSummaryFromFacts(facts, { documentId: 'synthetic-ifrs' });
+        expect(summary.isConsolidated).toBe(true);
+        expect(summary.current.bps).toBe(451.2);
+        expect(summary.prior.bps).toBe(406.4);
+    });
+
+    it('当期と前期の期間が同点のときは新しい期末を当期として選ぶ', () => {
+        const duration = (periodStart: string, periodEnd: string, scaledValue: number): ResolvedFact => ({
+            concept: 'tse-ed-t:NetSales',
+            name: 'NetSales',
+            namespace: 'tse-ed-t',
+            contextRef: `CurrentYearDuration-${periodEnd}`,
+            unitRef: 'JPY',
+            decimals: '-6',
+            scale: 6,
+            sign: 1,
+            format: 'ixt:numdotdecimal',
+            rawText: String(scaledValue / 1_000_000),
+            value: scaledValue / 1_000_000,
+            scaledValue,
+            sourceFile: 'XBRLData/Attachment/sample-ixbrl.htm',
+            periodRelation: 'current',
+            periodKind: 'duration',
+            periodStart,
+            periodEnd,
+            periodScope: 'annual',
+            quarter: null,
+            consolidation: 'consolidated',
+            actualForecast: 'actual',
+            contextStatus: 'resolved',
+            unresolvedReasons: [],
+            dimensions: [],
+        });
+        // 過去分の添付財務諸表が先に現れても、同点なら新しい期末 (当期) を採用する。
+        const facts: ResolvedFact[] = [
+            duration('2023-04-01', '2024-03-31', 100_000_000),
+            duration('2024-04-01', '2025-03-31', 200_000_000),
+        ];
+
+        const summary = extractFinancialSummaryFromFacts(facts, { documentId: 'synthetic-tie' });
+        expect(summary.periodEnd).toBe('2025-03-31');
+        expect(summary.current.netSales).toBe(200_000_000);
+    });
+
     it('連結 Fact がなければ単体 Fact にフォールバックする', () => {
         const base: ResolvedFact = {
             concept: 'tse-ed-t:NetSales',

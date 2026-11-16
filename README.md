@@ -290,7 +290,7 @@ manager.close();
 
 - (a) 1株当たり配当金は、現状のfixtureでは配当軸（`AnnualDividendPaymentScheduleAxis`）付きFactしかなく、サマリーの `current_dividend_per_share` / `prior_dividend_per_share` はnullになります。Fact層には保存されています。
 - (b) 訂正短信は別文書として保持します。同一企業・同一期間の最新版を自動選択する機能は未実装です。検索時は `is_revision` と開示日時を確認してください。
-- (c) BPS・従業員数は、実在fixtureで値が存在せず未検証の項目があります。マッピングと計算式は実装済みですが、実データでの確認が必要です。
+- (c) BPS は実データで検証済みです。J-GAAP の `NetAssetsPerShare` と IFRS の `EquityAttributableToOwnersOfParentPerShareIFRS` に対応し、IFRS 短信で併記される単体 BPS は使いません。従業員数は TDnet の決算短信 XBRL に該当要素が存在しないため、`current_number_of_employees` / `prior_number_of_employees` は常に null になります（Fact層にも従業員数の Fact は保存されません）。PDF や補足説明資料からの取得は別途対応が必要です。
 - (d) 過去分のPDF本文バックフィルは対象外です。数値データは `sync --xbrl-only` で蓄積できます。
 - (e) 米国基準（US-GAAP）の決算短信は、J-GAAP/IFRS と XBRL の科目名（`NetSalesUS` など）が異なるため、サマリーの主要科目はnullになります（Fact層には保存されます）。財務諸表のテキストブロックが無い資料は決算短信と判定されず `skipped` になることがあります。
 
