@@ -278,23 +278,19 @@ function consolidationOrder(basis: Consolidation): Consolidation[] {
 }
 
 function chooseCurrentPeriodEnd(facts: ResolvedFact[]): string | null {
-    const counts = new Map<string, { key: number; total: number }>();
+    const keyCounts = new Map<string, number>();
     for (const fact of facts) {
         if (!fact.periodEnd) continue;
-        const entry = counts.get(fact.periodEnd) ?? { key: 0, total: 0 };
-        entry.total++;
-        if (isKeyMetric(fact)) entry.key++;
-        counts.set(fact.periodEnd, entry);
+        keyCounts.set(fact.periodEnd, (keyCounts.get(fact.periodEnd) ?? 0) + (isKeyMetric(fact) ? 1 : 0));
     }
     let best: string | null = null;
-    let bestEntry = { key: -1, total: -1 };
-    for (const [periodEnd, entry] of counts) {
-        if (entry.key > bestEntry.key
-            || (entry.key === bestEntry.key && entry.total > bestEntry.total)
-            // 過去分の添付財務諸表が混在して同点になる場合は、新しい期末を当期とみなす。
-            || (entry.key === bestEntry.key && entry.total === bestEntry.total && (best === null || periodEnd > best))) {
+    let bestKeyCount = -1;
+    for (const [periodEnd, keyCount] of keyCounts) {
+        // キー科目数が同じ場合は新しい期末を当期とみなす。過去分の添付財務諸表が
+        // 混在する資料では古い期末のFact数が多いため、総数では比較しない。
+        if (keyCount > bestKeyCount || (keyCount === bestKeyCount && (best === null || periodEnd > best))) {
             best = periodEnd;
-            bestEntry = entry;
+            bestKeyCount = keyCount;
         }
     }
     return best;

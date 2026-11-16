@@ -356,10 +356,10 @@ describe('FinancialExtractor: 実在決算短信との突合', () => {
         expect(summary.prior.bps).toBe(406.4);
     });
 
-    it('当期と前期の期間が同点のときは新しい期末を当期として選ぶ', () => {
-        const duration = (periodStart: string, periodEnd: string, scaledValue: number): ResolvedFact => ({
-            concept: 'tse-ed-t:NetSales',
-            name: 'NetSales',
+    it('キー科目数が同じときはFact数が多くても古い期末ではなく新しい期末を選ぶ', () => {
+        const duration = (name: string, periodStart: string, periodEnd: string, scaledValue: number): ResolvedFact => ({
+            concept: `tse-ed-t:${name}`,
+            name,
             namespace: 'tse-ed-t',
             contextRef: `CurrentYearDuration-${periodEnd}`,
             unitRef: 'JPY',
@@ -383,10 +383,13 @@ describe('FinancialExtractor: 実在決算短信との突合', () => {
             unresolvedReasons: [],
             dimensions: [],
         });
-        // 過去分の添付財務諸表が先に現れても、同点なら新しい期末 (当期) を採用する。
+        // 実データ（川辺 140120250507532726）では、古い添付財務諸表の期末は
+        // キー科目数が同じでも Fact 総数が多い。総数ではなく期末の新しさで選ぶ。
         const facts: ResolvedFact[] = [
-            duration('2023-04-01', '2024-03-31', 100_000_000),
-            duration('2024-04-01', '2025-03-31', 200_000_000),
+            duration('NetSales', '2023-04-01', '2024-03-31', 100_000_000),
+            duration('Depreciation', '2023-04-01', '2024-03-31', 1_000_000),
+            duration('Amortization', '2023-04-01', '2024-03-31', 2_000_000),
+            duration('NetSales', '2024-04-01', '2025-03-31', 200_000_000),
         ];
 
         const summary = extractFinancialSummaryFromFacts(facts, { documentId: 'synthetic-tie' });
