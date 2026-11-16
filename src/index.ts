@@ -18,6 +18,7 @@ export * from './types.js';
 export type { FinancialScreenOptions, FinancialSummaryRow } from './db.js';
 export type {
     AccountingStandard,
+    DividendMetrics,
     ExtractedFinancialSummary,
     FinancialExtractionMetadata,
     FinancialIndicators,
@@ -374,6 +375,11 @@ export class TdnetManager {
      */
     public screenFinancials(options?: FinancialScreenOptions): FinancialSummaryRow[] {
         return this.db.screenFinancials(options);
+    }
+
+    /** 既存サマリーの配当項目を、保存済み Fact から再計算して埋める。 */
+    public backfillDividendSummaries(): { scanned: number; updated: number } {
+        return this.db.backfillDividendSummaries();
     }
 
     /**

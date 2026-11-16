@@ -244,6 +244,12 @@ export async function runCli(args: string[] = process.argv.slice(2)) {
                 break;
             }
 
+            case 'backfill-dividends': {
+                const result = getManager().backfillDividendSummaries();
+                console.log(JSON.stringify(result, null, 2));
+                break;
+            }
+
             case 'schema': {
                 if (values.json) {
                     // edinet-ts と同じく summary の columns をトップレベルにも置く。
@@ -330,6 +336,7 @@ Commands:
   recover    Retry saved document IDs; optionally save missing original PDFs.
   search     Search the SQLite DB for given keyword. (keyword is optional)
   screen     Screen tdnet_financial_summary with a SQL --where expression.
+  backfill-dividends  Recompute dividend columns of existing summaries from stored facts.
   schema     Show tdnet_financial_summary / tdnet_financial_facts columns.
   parse      Parse a single XBRL ZIP and show facts, contexts and summary.
 
@@ -363,6 +370,7 @@ Examples:
   tdnet-ts search "決算" --start 2026-01-01 --end 2026-03-31
   tdnet-ts screen --where "operating_margin_current >= 0.15"
   tdnet-ts screen --where "roe_current >= 0.15" --json
+  tdnet-ts backfill-dividends
   tdnet-ts schema
   tdnet-ts schema --json
   tdnet-ts parse ./xbrl.zip

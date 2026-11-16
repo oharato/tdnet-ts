@@ -140,24 +140,113 @@ describe('FinancialExtractor: 実在決算短信との突合', () => {
         expect(summary.indicators.equityRatioPrior).toBeCloseTo(14770 / 37686, 12);
         expect(summary.indicators.roeCurrent).toBeCloseTo(1022 / 15037, 12);
         expect(summary.indicators.roaCurrent).toBeCloseTo(1022 / 37638, 12);
+
+        expect(summary.current.dividendPerShareForecast).toBe(20);
+        expect(summary.prior.dividendPerShare).toBe(23);
     });
 
-    it('配当・セグメントなど対象外の次元が付いた Fact はサマリーに使わない', async () => {
+    it('配当は年間行の実績・予想だけをサマリーに使う', async () => {
         const parsed = await parsedFixture('jgaap-23760-2026-q2.zip');
         const facts = resolveFacts(parsed);
         const summary = extractFinancialSummaryFromFacts(facts, { documentId: '1290345' });
 
-        // 配当は AnnualDividendPaymentScheduleAxis 付きの Context にしか存在しない。
+        // 配当 Fact は AnnualDividendPaymentScheduleAxis 付きで未解決だが、
+        // 年間行 (AnnualMember) の実績・予想だけはサマリーに使う。
         expect(facts.some(fact => fact.name === 'DividendPerShare')).toBe(true);
+        // Q2 時点では当期の年間実績はない。四半期行 (0円) を年間実績にしない。
         expect(summary.current.dividendPerShare).toBeUndefined();
-        expect(summary.prior.dividendPerShare).toBeUndefined();
+        expect(summary.current.dividendPerShareForecast).toBe(15);
+        expect(summary.prior.dividendPerShare).toBe(15);
 
         const used = Object.values(summary.usedContextIds).flat();
+        // 配当軸の Context は配当の抽出にだけ使い、他の科目の期間選択には使わない。
         expect(used.some(id => /AnnualMember|QuarterMember|YearEndMember/.test(id))).toBe(false);
         expect(used.some(id => /ReportableSegments|OperatingSegments/.test(id))).toBe(false);
         // 添付財務諸表の無次元 Context は CF・現金同等物のために使う。
         expect(used).toContain('InterimDuration');
         expect(used).toContain('Prior1InterimDuration');
+    });
+
+    it('年間配当は連結を優先し、Upper/Lower の予想は使わない', () => {
+        const fact = (overrides: Partial<ResolvedFact> & Pick<ResolvedFact, 'name' | 'scaledValue'>): ResolvedFact => ({
+            concept: `tse-ed-t:${overrides.name}`,
+            name: overrides.name,
+            namespace: 'tse-ed-t',
+            contextRef: 'CurrentYearDuration_AnnualMember_ConsolidatedMember_ForecastMember',
+            unitRef: 'JPYPerShares',
+            decimals: '2',
+            scale: 0,
+            sign: 1,
+            format: null,
+            rawText: String(overrides.scaledValue),
+            value: overrides.scaledValue,
+            scaledValue: overrides.scaledValue,
+            sourceFile: 'XBRLData/Summary/sample-ixbrl.htm',
+            periodRelation: 'current',
+            periodKind: 'duration',
+            periodStart: '2026-04-01',
+            periodEnd: '2027-03-31',
+            periodScope: 'annual',
+            quarter: null,
+            consolidation: 'consolidated',
+            actualForecast: 'forecast',
+            contextStatus: 'unresolved',
+            unresolvedReasons: ['extra_dimension:AnnualDividendPaymentScheduleAxis'],
+            dimensions: [
+                { dimension: 'tse-ed-t:AnnualDividendPaymentScheduleAxis', member: 'tse-ed-t:AnnualMember' },
+                { dimension: 'tse-ed-t:ConsolidatedNonconsolidatedAxis', member: 'tse-ed-t:ConsolidatedMember' },
+                { dimension: 'tse-ed-t:ResultForecastAxis', member: 'tse-ed-t:ForecastMember' },
+            ],
+            ...overrides,
+        });
+        const facts: ResolvedFact[] = [
+            fact({ name: 'DividendPerShare', scaledValue: 30 }),
+            fact({
+                name: 'DividendPerShare',
+                scaledValue: 20,
+                consolidation: 'non_consolidated',
+                dimensions: [
+                    { dimension: 'tse-ed-t:AnnualDividendPaymentScheduleAxis', member: 'tse-ed-t:AnnualMember' },
+                    { dimension: 'tse-ed-t:ConsolidatedNonconsolidatedAxis', member: 'tse-ed-t:NonConsolidatedMember' },
+                    { dimension: 'tse-ed-t:ResultForecastAxis', member: 'tse-ed-t:ForecastMember' },
+                ],
+            }),
+            fact({
+                name: 'DividendPerShare',
+                scaledValue: 99,
+                dimensions: [
+                    { dimension: 'tse-ed-t:AnnualDividendPaymentScheduleAxis', member: 'tse-ed-t:AnnualMember' },
+                    { dimension: 'tse-ed-t:ConsolidatedNonconsolidatedAxis', member: 'tse-ed-t:ConsolidatedMember' },
+                    { dimension: 'tse-ed-t:ResultForecastAxis', member: 'tse-ed-t:UpperMember' },
+                ],
+            }),
+            fact({
+                name: 'DividendPerShare',
+                scaledValue: 40,
+                actualForecast: 'actual',
+                dimensions: [
+                    { dimension: 'tse-ed-t:AnnualDividendPaymentScheduleAxis', member: 'tse-ed-t:AnnualMember' },
+                    { dimension: 'tse-ed-t:ConsolidatedNonconsolidatedAxis', member: 'tse-ed-t:ConsolidatedMember' },
+                    { dimension: 'tse-ed-t:ResultForecastAxis', member: 'tse-ed-t:ResultMember' },
+                ],
+            }),
+            fact({
+                name: 'DividendPerShare',
+                scaledValue: 35,
+                actualForecast: 'actual',
+                periodRelation: 'prior',
+                dimensions: [
+                    { dimension: 'tse-ed-t:AnnualDividendPaymentScheduleAxis', member: 'tse-ed-t:AnnualMember' },
+                    { dimension: 'tse-ed-t:ConsolidatedNonconsolidatedAxis', member: 'tse-ed-t:ConsolidatedMember' },
+                    { dimension: 'tse-ed-t:ResultForecastAxis', member: 'tse-ed-t:ResultMember' },
+                ],
+            }),
+        ];
+
+        const summary = extractFinancialSummaryFromFacts(facts, { documentId: 'synthetic' });
+        expect(summary.current.dividendPerShareForecast).toBe(30);
+        expect(summary.current.dividendPerShare).toBe(40);
+        expect(summary.prior.dividendPerShare).toBe(35);
     });
 
     it('BPS・1株当たり配当金・従業員数と従業員1人当たり営業利益を抽出する', () => {

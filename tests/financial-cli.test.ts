@@ -94,6 +94,11 @@ describe('screen / schema / parse CLI', () => {
         }
     });
 
+    it('backfill-dividends は保存済み Fact から配当項目を再計算する', async () => {
+        const output = await captureLogs(() => runCli(['backfill-dividends', '--db', dbPath]));
+        expect(JSON.parse(output)).toEqual({ scanned: 2, updated: 2 });
+    });
+
     it('schema --json は summary と facts の全カラムを返す', async () => {
         const output = await captureLogs(() => runCli(['schema', '--json']));
         const schema = JSON.parse(output) as {
@@ -109,6 +114,7 @@ describe('screen / schema / parse CLI', () => {
         const summaryColumns = schema.tables[0].columns.map(column => column.name);
         expect(summaryColumns).toContain('operating_margin_current');
         expect(summaryColumns).toContain('free_cash_flow_current');
+        expect(summaryColumns).toContain('current_dividend_per_share_forecast');
         expect(summaryColumns).toContain('prior_period_end');
         const factColumns = schema.tables[1].columns.map(column => column.name);
         expect(factColumns).toContain('scaled_value');
