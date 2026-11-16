@@ -88,7 +88,7 @@ await manager.sync({ date: '2023-11-08', limit: 2000, xbrlOnly: true });
 - 連結Factを優先し、連結がなければ単体を使います。セグメント軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。配当軸付きFactも配当項目の抽出にだけ使います。
 - XBRL取込済み（`parsed`）または決算短信でないと判定済み（`skipped`）の資料は再取得しません。失敗（`failed`）は次回の同期で再試行します。
 - PDF変換の失敗とXBRLの失敗は互いに独立です。結果は `SyncResult.xbrl` に `synced` / `existing` / `skipped` / `failed` と、Fact数・ダウンロードバイト数・処理時間を返します。
-- 訂正短信は元の文書と別の `document_id` として保存します。最新版を自動選択する機能はありません。
+- 訂正短信は元の文書と別の `document_id` として保存します。保存行は書き換えず、サマリーの読み取り（`screen` / `screenFinancials`）では同一企業・同一期末日の最新版だけを返します。
 
 #### 一覧APIの待機と再試行
 
@@ -225,11 +225,13 @@ DBに保存した会社名・タイトル・本文と検索結果の原文は変
 
 ### 3. 決算短信XBRLの検索・確認 (screen / schema / parse)
 
-`sync` で取り込んだ財務データは、文書ごとの状態を持つ `tdnet_xbrl_documents`、数値Fact全件の `tdnet_financial_facts`、1文書=1行の `tdnet_financial_summary` に保存されます。既存の `tdnet_documents`（PDF・Markdown検索）は変更していません。
+`sync` で取り込んだ財務データは、文書ごとの状態を持つ `tdnet_xbrl_documents`、数値Fact全件の `tdnet_financial_facts`、1文書=1行の `tdnet_financial_summary` に保存されます。既存の `tdnet_documents`（PDF・Markdown検索）は変更していません。サマリーの読み取りは、同一企業・同一期末日の最新版だけを持つ VIEW `tdnet_financial_summary_latest` を既定で使います。
 
 #### screen
 
-`tdnet_financial_summary` に対して `--where` のSQL条件式をそのまま適用します。絞り込み用の個別オプションは増やさず、カラム名は `schema` で確認できます。既定は50件、`period_end DESC, document_id ASC` の順です。
+`tdnet_financial_summary_latest` に対して `--where` のSQL条件式をそのまま適用します。絞り込み用の個別オプションは増やさず、カラム名は `schema` で確認できます。既定は50件、`period_end DESC, document_id ASC` の順です。
+
+同一企業（`ticker`）・同一期末日（`period_end`）に訂正版や再訂正、期中レビュー完了の再開示がある場合は、開示日時が最も新しい1行だけを返します。日時が同じなら `document_id` の降順で決めます。旧版は `tdnet_financial_summary` にそのまま残っており、`getFinancialSummary(documentId)` や SQL の直接参照で確認できます。`period_end` が NULL の行と、数値項目が1つも入っていない行は最新版の候補にしません（抽出に失敗した訂正告知が有効な元行を隠さないため）。
 
 ```bash
 # 当期営業利益率15%以上
@@ -293,7 +295,7 @@ console.log(rows[0].currentNetSales, rows[0].roeCurrent);
 manager.close();
 ```
 
-`screenFinancials` の引数 `FinancialScreenOptions` と戻り値 `FinancialSummaryRow` を公開しています。
+`screenFinancials` の引数 `FinancialScreenOptions` と戻り値 `FinancialSummaryRow` を公開しています。既定では同一企業・同一期末日の最新版のみを返します。旧版の文書IDしか分からない場合は、保存行をそのまま返す `getFinancialSummary(documentId)` と、同一企業・同一期末日の最新版を返す `getLatestFinancialSummary(documentId)` を使い分けてください。
 
 #### 対象範囲と保存方針
 
@@ -308,7 +310,7 @@ manager.close();
 #### 既知の制限
 
 - (a) 配当は年間行のみ対応しています。四半期配当・期末配当の内訳、配当性向、配当総額はサマリーに含めません（Fact層には保存されています）。
-- (b) 訂正短信は別文書として保持します。同一企業・同一期間の最新版を自動選択する機能は未実装です。検索時は `is_revision` と開示日時を確認してください。
+- (b) 訂正短信は別文書として保存し、`screen` は同一企業・同一期末日の最新版のみを返します。訂正版の XBRL が一部の科目しか抽出できない場合、その科目は旧版から引き継がず null になります（版のマージはしません）。旧版は `tdnet_financial_summary` を直接参照してください。
 - (c) BPS は実データで検証済みです。J-GAAP の `NetAssetsPerShare` と IFRS の `EquityAttributableToOwnersOfParentPerShareIFRS` に対応し、IFRS 短信で併記される単体 BPS は使いません。従業員数は TDnet の決算短信 XBRL に該当要素が存在しないため、`current_number_of_employees` / `prior_number_of_employees` は常に null になります（Fact層にも従業員数の Fact は保存されません）。PDF や補足説明資料からの取得は別途対応が必要です。
 - (d) 過去分のPDF本文バックフィルは対象外です。数値データは `sync --xbrl-only` で蓄積できます。
 - (e) 米国基準（US-GAAP）の決算短信は、J-GAAP/IFRS と XBRL の科目名（`NetSalesUS` など）が異なるため、サマリーの主要科目はnullになります（Fact層には保存されます）。財務諸表のテキストブロックが無い資料は決算短信と判定されず `skipped` になることがあります。
