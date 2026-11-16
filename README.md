@@ -84,7 +84,8 @@ await manager.sync({ date: '2023-11-08', limit: 2000, xbrlOnly: true });
 
 - 数値Factは `tdnet_financial_facts` に全件保存します。テキストFactは判定にだけ使い、保存は保留しています。
 - 四半期単独値・業績予想・配当予想もFact層には保存します。`tdnet_financial_summary` は当期・前期の累計実績を基準に作ります。
-- 連結Factを優先し、連結がなければ単体を使います。セグメント軸・配当軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。
+- 配当は配当表の年間行（`AnnualDividendPaymentScheduleAxis=AnnualMember`）だけをサマリーに使います。当期の年間実績（FY）・当期の年間予想（Q1〜Q3）・前期の年間実績を `current_dividend_per_share` / `current_dividend_per_share_forecast` / `prior_dividend_per_share` に保存します。
+- 連結Factを優先し、連結がなければ単体を使います。セグメント軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。配当軸付きFactも配当項目の抽出にだけ使います。
 - XBRL取込済み（`parsed`）または決算短信でないと判定済み（`skipped`）の資料は再取得しません。失敗（`failed`）は次回の同期で再試行します。
 - PDF変換の失敗とXBRLの失敗は互いに独立です。結果は `SyncResult.xbrl` に `synced` / `existing` / `skipped` / `failed` と、Fact数・ダウンロードバイト数・処理時間を返します。
 - 訂正短信は元の文書と別の `document_id` として保存します。最新版を自動選択する機能はありません。
@@ -237,11 +238,28 @@ npx tdnet-ts screen --where "operating_margin_current >= 0.15"
 # 高ROEかつ自己資本比率50%以上をJSONで出力
 npx tdnet-ts screen --where "roe_current >= 0.15 AND equity_ratio_current >= 0.50" --json
 
+# 当期の年間配当予想が前期実績を上回る（増配）
+npx tdnet-ts screen --where "current_dividend_per_share_forecast > prior_dividend_per_share"
+
 # 期末日で絞り、ページングする
 npx tdnet-ts screen --where "period_end >= '2026-04-01'" --limit 100 --offset 0
 ```
 
 `--json` はDBカラムに対応するフラットなcamelCase（例: `currentNetSales`, `operatingMarginCurrent`）を返します。端末では主要指標を表形式で表示します。
+
+#### 配当項目のバックフィル
+
+既存のサマリー行には配当項目が入っていないため、`tdnet_financial_facts` に保存済みのFactから配当列だけを再計算するコマンドを用意しています。サマリーの他の列は変更せず、対象行を1トランザクションで更新します。
+
+```bash
+# 既存サマリーの配当列を埋める（本番DBへ書き込むため、実行は別途判断）
+npx tdnet-ts backfill-dividends --db ./tdnet.sqlite
+
+# 検証用DBで先に確認する
+npx tdnet-ts backfill-dividends --db ./backfill-test.sqlite
+```
+
+出力は `{"scanned": 対象サマリー数, "updated": 配当を1項目以上抽出できた行数}` です。Factが保存されていない文書はスキップします。ライブラリAPIでは `manager.backfillDividendSummaries()` を呼びます。
 
 #### schema
 
@@ -281,14 +299,15 @@ manager.close();
 
 - 対象は決算短信のXBRLのみです。判定はAPIタイトルではなく、XBRLの `DocumentName`、四半期情報、財務諸表の有無で行います。
 - 数値Factは未解決Context・四半期単独・予想も含めて全件保存します。テキストFactは判定にだけ使い、保存は保留しています。
-- `tdnet_financial_summary` は当期・前期の累計実績を基準に、固定科目セット（売上高/営業収益、営業利益、経常利益、親会社株主に帰属する当期純利益、純資産、総資産、営業CF、投資CF、現金及び現金同等物、EPS、BPS、1株当たり配当金、従業員数）と指標を保存します。
-- 連結Factを優先し、なければ単体を使います。セグメント軸・配当軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。
+- `tdnet_financial_summary` は当期・前期の累計実績を基準に、固定科目セット（売上高/営業収益、営業利益、経常利益、親会社株主に帰属する当期純利益、純資産、総資産、営業CF、投資CF、現金及び現金同等物、EPS、BPS、年間1株当たり配当金の実績・予想、従業員数）と指標を保存します。
+- 連結Factを優先し、なければ単体を使います。セグメント軸など対象外の次元が付いたFactはFact層に残し、サマリーには使いません。配当軸付きFactは年間配当項目の抽出にだけ使います。
+- 配当は年間行だけを使います。`current_dividend_per_share` はFYの当期実績、`current_dividend_per_share_forecast` はQ1〜Q3の当期予想、`prior_dividend_per_share` は前期実績です。四半期行・期末行は年間合計ではないため使いません。
 - IFRSには経常利益がないため、`ordinaryIncome` は税引前利益を代替として使います。
 - 過去分の数値データは `sync --xbrl-only` でバックフィルできます。PDF本文の過去分バックフィルは対象外です。
 
 #### 既知の制限
 
-- (a) 1株当たり配当金は、現状のfixtureでは配当軸（`AnnualDividendPaymentScheduleAxis`）付きFactしかなく、サマリーの `current_dividend_per_share` / `prior_dividend_per_share` はnullになります。Fact層には保存されています。
+- (a) 配当は年間行のみ対応しています。四半期配当・期末配当の内訳、配当性向、配当総額はサマリーに含めません（Fact層には保存されています）。
 - (b) 訂正短信は別文書として保持します。同一企業・同一期間の最新版を自動選択する機能は未実装です。検索時は `is_revision` と開示日時を確認してください。
 - (c) BPS は実データで検証済みです。J-GAAP の `NetAssetsPerShare` と IFRS の `EquityAttributableToOwnersOfParentPerShareIFRS` に対応し、IFRS 短信で併記される単体 BPS は使いません。従業員数は TDnet の決算短信 XBRL に該当要素が存在しないため、`current_number_of_employees` / `prior_number_of_employees` は常に null になります（Fact層にも従業員数の Fact は保存されません）。PDF や補足説明資料からの取得は別途対応が必要です。
 - (d) 過去分のPDF本文バックフィルは対象外です。数値データは `sync --xbrl-only` で蓄積できます。
