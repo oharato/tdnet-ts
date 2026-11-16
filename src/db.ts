@@ -5,7 +5,8 @@ import { searchDateBound } from './search-date.js';
 import { normalizeSearchText } from './search-normalize.js';
 import { literalPattern, searchColumns, searchTerms } from './search-query.js';
 import type { ExtractedFinancialSummary } from './financial/extractor.js';
-import type { ResolvedFact } from './xbrl/context.js';
+import { extractDividendMetrics } from './financial/extractor.js';
+import type { Consolidation, ResolvedFact } from './xbrl/context.js';
 import type { XbrlDimension } from './xbrl/parser.js';
 
 export interface XbrlDocumentRecord {
@@ -126,6 +127,7 @@ export interface FinancialSummaryRow {
   currentEps?: number;
   currentBps?: number;
   currentDividendPerShare?: number;
+  currentDividendPerShareForecast?: number;
   currentNumberOfEmployees?: number;
   priorNetSales?: number;
   priorOperatingIncome?: number;
@@ -186,6 +188,7 @@ function mapFinancialSummaryRowFlat(row: Record<string, any>): FinancialSummaryR
     currentEps: numberOrUndefined(row.current_eps),
     currentBps: numberOrUndefined(row.current_bps),
     currentDividendPerShare: numberOrUndefined(row.current_dividend_per_share),
+    currentDividendPerShareForecast: numberOrUndefined(row.current_dividend_per_share_forecast),
     currentNumberOfEmployees: numberOrUndefined(row.current_number_of_employees),
     priorNetSales: numberOrUndefined(row.prior_net_sales),
     priorOperatingIncome: numberOrUndefined(row.prior_operating_income),
@@ -248,6 +251,7 @@ function mapFinancialSummaryRow(row: Record<string, any>): ExtractedFinancialSum
       eps: numberOrUndefined(row.current_eps),
       bps: numberOrUndefined(row.current_bps),
       dividendPerShare: numberOrUndefined(row.current_dividend_per_share),
+      dividendPerShareForecast: numberOrUndefined(row.current_dividend_per_share_forecast),
       numberOfEmployees: numberOrUndefined(row.current_number_of_employees),
     },
     prior: {
@@ -397,6 +401,7 @@ export class DbClient {
         current_eps REAL,
         current_bps REAL,
         current_dividend_per_share REAL,
+        current_dividend_per_share_forecast REAL,
         current_number_of_employees REAL,
         prior_net_sales REAL,
         prior_operating_income REAL,
@@ -451,6 +456,12 @@ export class DbClient {
         WHERE version_rank = 1
       ) latest ON latest.document_id = s.document_id
     `);
+    // 既存DBに配当予想カラムを追加する。
+    try {
+      this.db.exec(`ALTER TABLE tdnet_financial_summary ADD COLUMN current_dividend_per_share_forecast REAL`);
+    } catch {
+      /* ignore if already exists */
+    }
   }
 
   public insertDocument(doc: TdnetDocument) {
@@ -728,6 +739,7 @@ export class DbClient {
       current_eps: nullableNumber(summary.current.eps),
       current_bps: nullableNumber(summary.current.bps),
       current_dividend_per_share: nullableNumber(summary.current.dividendPerShare),
+      current_dividend_per_share_forecast: nullableNumber(summary.current.dividendPerShareForecast),
       current_number_of_employees: nullableInteger(summary.current.numberOfEmployees),
       prior_net_sales: nullableNumber(summary.prior.netSales),
       prior_operating_income: nullableNumber(summary.prior.operatingIncome),
@@ -810,6 +822,48 @@ export class DbClient {
     }
     const rows = this.db.prepare(sql).all(...params) as Record<string, any>[];
     return rows.map(mapFinancialSummaryRowFlat);
+  }
+
+  /**
+   * 既存サマリーの配当項目を、保存済み Fact から再計算して埋める。
+   * 新しいカラム追加後の一括バックフィル用。サマリーの他の項目は変更しない。
+   */
+  public backfillDividendSummaries(now: string = new Date().toISOString()): { scanned: number; updated: number } {
+    const rows = this.db.prepare(`SELECT document_id, is_consolidated FROM tdnet_financial_summary`).all() as Record<string, any>[];
+    const stmt = this.db.prepare(`
+      UPDATE tdnet_financial_summary
+      SET current_dividend_per_share = ?, current_dividend_per_share_forecast = ?,
+          prior_dividend_per_share = ?, updated_at = ?
+      WHERE document_id = ?
+    `);
+    let updated = 0;
+    this.db.exec('BEGIN');
+    try {
+      for (const row of rows) {
+        const facts = this.getFinancialFacts(String(row.document_id));
+        if (facts.length === 0) continue;
+        const basis: Consolidation = row.is_consolidated === null || row.is_consolidated === undefined
+          ? 'unknown'
+          : row.is_consolidated ? 'consolidated' : 'non_consolidated';
+        const dividends = extractDividendMetrics(facts, basis);
+        if (dividends.currentDividendPerShare === undefined
+          && dividends.currentDividendPerShareForecast === undefined
+          && dividends.priorDividendPerShare === undefined) continue;
+        stmt.run(
+          nullableNumber(dividends.currentDividendPerShare),
+          nullableNumber(dividends.currentDividendPerShareForecast),
+          nullableNumber(dividends.priorDividendPerShare),
+          now,
+          String(row.document_id),
+        );
+        updated++;
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { scanned: rows.length, updated };
   }
 
   /** XBRL 文書・Fact 全件・サマリーを 1 トランザクションで保存する。 */

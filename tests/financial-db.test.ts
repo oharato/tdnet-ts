@@ -119,6 +119,52 @@ describe('DbClient financial tables', () => {
         });
         expect(stored?.indicators.freeCashFlowCurrent).toBe(-380_777_000);
         expect(stored?.indicators.equityRatioCurrent).toBeCloseTo(7712 / 13734, 12);
+        expect(stored?.current.dividendPerShareForecast).toBe(15);
+        expect(stored?.prior.dividendPerShare).toBe(15);
+
+        const [row] = db.screenFinancials({ where: `document_id = '140120261105565082'` });
+        expect(row.currentDividendPerShareForecast).toBe(15);
+        expect(row.priorDividendPerShare).toBe(15);
+    });
+
+    it('既存サマリーの配当項目を保存済み Fact からバックフィルする', async () => {
+        const parsed = await parseXbrlZip(await readFile(fixture('jgaap-23760-2026-q2.zip')));
+        const facts = resolveFacts(parsed);
+        const summary = extractFinancialSummaryFromFacts(facts, { documentId: 'backfill-1' });
+        const now = '2026-11-08T00:00:00.000Z';
+        db.saveXbrlExtraction({
+            document: {
+                documentId: summary.documentId,
+                xbrlUrl: null,
+                status: 'parsed',
+                periodType: summary.periodType,
+                periodStart: summary.periodStart,
+                periodEnd: summary.periodEnd,
+                accountingStandard: summary.accountingStandard,
+                isConsolidated: summary.isConsolidated,
+                isRevision: false,
+                factCount: facts.length,
+                error: null,
+                createdAt: now,
+                updatedAt: now,
+            },
+            facts,
+            summary,
+        });
+        // 旧実装で保存されたサマリーを再現する。
+        db.insertFinancialSummary({
+            ...summary,
+            current: { ...summary.current, dividendPerShare: undefined, dividendPerShareForecast: undefined },
+            prior: { ...summary.prior, dividendPerShare: undefined },
+        });
+        expect(db.getFinancialSummary('backfill-1')?.current.dividendPerShareForecast).toBeUndefined();
+
+        expect(db.backfillDividendSummaries(now)).toEqual({ scanned: 1, updated: 1 });
+        const stored = db.getFinancialSummary('backfill-1');
+        expect(stored?.current.dividendPerShareForecast).toBe(15);
+        expect(stored?.prior.dividendPerShare).toBe(15);
+        // 配当以外のサマリー項目は変更しない。
+        expect(stored?.current.netSales).toBe(7_071_000_000);
     });
 
     it('同じ文書を再保存しても Fact を重複させない', async () => {

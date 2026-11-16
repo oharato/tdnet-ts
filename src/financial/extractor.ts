@@ -19,7 +19,10 @@ export interface FinancialMetrics {
     cashAndEquivalents?: number;
     eps?: number;
     bps?: number;
+    /** 年間1株当たり配当金（実績）。 */
     dividendPerShare?: number;
+    /** 年間1株当たり配当金（予想）。 */
+    dividendPerShareForecast?: number;
     numberOfEmployees?: number;
 }
 
@@ -82,7 +85,17 @@ export interface ExtractedFinancialSummary {
     };
 }
 
-type MetricKey = keyof FinancialMetrics;
+type MetricKey = Exclude<keyof FinancialMetrics, 'dividendPerShareForecast'>;
+
+/** 配当表の年間行から抽出する配当科目。 */
+const DIVIDEND_TAGS = [
+    'DividendPerShare',
+    'DividendPaidPerShare',
+    'CashDividendsPaidPerShare',
+    'DividendPerShareSummaryOfBusinessResults',
+    'DividendPaidPerShareSummaryOfBusinessResults',
+    'CashDividendsPaidPerShareSummaryOfBusinessResults',
+];
 
 /**
  * TDnet 決算短信のサマリー (tse-ed-t) と添付財務諸表 (jppfs_cor / jpigp_cor) の
@@ -178,20 +191,14 @@ const METRIC_TAGS: Record<MetricKey, string[]> = {
     ],
     bps: [
         'NetAssetsPerShare',
+        'EquityAttributableToOwnersOfParentPerShareIFRS',
         'NetAssetsPerShareIFRS',
         'EquityPerShare',
         'BPS',
         'NetAssetsPerShareSummaryOfBusinessResults',
         'NetAssetsPerShareIFRSSummaryOfBusinessResults',
     ],
-    dividendPerShare: [
-        'DividendPerShare',
-        'DividendPaidPerShare',
-        'CashDividendsPaidPerShare',
-        'DividendPerShareSummaryOfBusinessResults',
-        'DividendPaidPerShareSummaryOfBusinessResults',
-        'CashDividendsPaidPerShareSummaryOfBusinessResults',
-    ],
+    dividendPerShare: DIVIDEND_TAGS,
     numberOfEmployees: [
         'NumberOfEmployees',
         'NumberOfEmployeesSummaryOfBusinessResults',
@@ -282,7 +289,10 @@ function chooseCurrentPeriodEnd(facts: ResolvedFact[]): string | null {
     let best: string | null = null;
     let bestEntry = { key: -1, total: -1 };
     for (const [periodEnd, entry] of counts) {
-        if (entry.key > bestEntry.key || (entry.key === bestEntry.key && entry.total > bestEntry.total)) {
+        if (entry.key > bestEntry.key
+            || (entry.key === bestEntry.key && entry.total > bestEntry.total)
+            // 過去分の添付財務諸表が混在して同点になる場合は、新しい期末を当期とみなす。
+            || (entry.key === bestEntry.key && entry.total === bestEntry.total && (best === null || periodEnd > best))) {
             best = periodEnd;
             bestEntry = entry;
         }
@@ -364,6 +374,76 @@ function sum(left: number | undefined, right: number | undefined): number | unde
     return left === undefined || right === undefined ? undefined : left + right;
 }
 
+function localName(value: string): string {
+    const index = value.indexOf(':');
+    return index === -1 ? value : value.slice(index + 1);
+}
+
+function dividendMember(fact: ResolvedFact, axis: string): string | null | undefined {
+    const dimension = fact.dimensions.find(item => localName(item.dimension) === axis);
+    if (!dimension) return undefined;
+    return dimension.member === null ? null : localName(dimension.member);
+}
+
+/** 配当表の年間行だけを使う。四半期行・期末行は年間合計ではないため除外する。 */
+function isAnnualDividendFact(fact: ResolvedFact): boolean {
+    if (fact.periodKind !== 'duration' || fact.periodScope !== 'annual') return false;
+    if (!fact.periodStart || !fact.periodEnd) return false;
+    if (dividendMember(fact, 'AnnualDividendPaymentScheduleAxis') !== 'AnnualMember') return false;
+    if (!fact.dimensions.every(dimension => {
+        const axis = localName(dimension.dimension);
+        return axis === 'AnnualDividendPaymentScheduleAxis'
+            || axis === 'ConsolidatedNonconsolidatedAxis'
+            || axis === 'ResultForecastAxis';
+    })) return false;
+    // 未解決理由は配当軸によるものだけを許容する。
+    return fact.unresolvedReasons.every(reason => reason === 'extra_dimension:AnnualDividendPaymentScheduleAxis');
+}
+
+function findAnnualDividend(
+    facts: ResolvedFact[],
+    relation: 'current' | 'prior',
+    forecast: 'actual' | 'forecast',
+    order: Consolidation[],
+): number | undefined {
+    const expectedMember = forecast === 'actual' ? 'ResultMember' : 'ForecastMember';
+    for (const consolidation of order) {
+        for (const tag of DIVIDEND_TAGS) {
+            const fact = facts.find(item =>
+                item.name === tag
+                && item.consolidation === consolidation
+                && item.periodRelation === relation
+                && item.actualForecast === forecast
+                && dividendMember(item, 'ResultForecastAxis') === expectedMember
+                && isAnnualDividendFact(item));
+            if (fact) return fact.scaledValue;
+        }
+    }
+    return undefined;
+}
+
+export interface DividendMetrics {
+    /** 当期の年間配当実績（FY の決算短信で取得できる）。 */
+    currentDividendPerShare?: number;
+    /** 当期の年間配当予想（Q1〜Q3 の決算短信で取得できる）。 */
+    currentDividendPerShareForecast?: number;
+    /** 前期の年間配当実績。 */
+    priorDividendPerShare?: number;
+}
+
+/** 配当表の年間行から、スクリーニング用の年間1株当たり配当を抽出する。 */
+export function extractDividendMetrics(
+    facts: ResolvedFact[],
+    basis: Consolidation = 'unknown',
+): DividendMetrics {
+    const order = consolidationOrder(basis);
+    return {
+        currentDividendPerShare: findAnnualDividend(facts, 'current', 'actual', order),
+        currentDividendPerShareForecast: findAnnualDividend(facts, 'current', 'forecast', order),
+        priorDividendPerShare: findAnnualDividend(facts, 'prior', 'actual', order),
+    };
+}
+
 function extractMetrics(facts: ResolvedFact[], order: Consolidation[]): FinancialMetrics {
     return {
         netSales: findMetric(facts, 'netSales', order),
@@ -443,6 +523,7 @@ export function extractFinancialSummaryFromFacts(
     const currentInstant = extractMetrics(currentInstants, order);
     const priorFiscalInstant = extractMetrics(priorFiscalInstants, order);
     const priorPeriodInstant = extractMetrics(priorPeriodInstants, order);
+    const dividends = extractDividendMetrics(facts, basis);
 
     const current: FinancialMetrics = {
         netSales: currentDuration.netSales,
@@ -456,7 +537,8 @@ export function extractFinancialSummaryFromFacts(
         cashAndEquivalents: currentInstant.cashAndEquivalents,
         eps: currentDuration.eps,
         bps: currentInstant.bps,
-        dividendPerShare: currentDuration.dividendPerShare,
+        dividendPerShare: dividends.currentDividendPerShare ?? currentDuration.dividendPerShare,
+        dividendPerShareForecast: dividends.currentDividendPerShareForecast,
         numberOfEmployees: currentInstant.numberOfEmployees,
     };
     const prior: FinancialMetrics = {
@@ -472,7 +554,7 @@ export function extractFinancialSummaryFromFacts(
         cashAndEquivalents: priorPeriodInstant.cashAndEquivalents ?? priorFiscalInstant.cashAndEquivalents,
         eps: priorDuration.eps,
         bps: priorFiscalInstant.bps ?? priorPeriodInstant.bps,
-        dividendPerShare: priorDuration.dividendPerShare,
+        dividendPerShare: dividends.priorDividendPerShare ?? priorDuration.dividendPerShare,
         numberOfEmployees: priorFiscalInstant.numberOfEmployees ?? priorPeriodInstant.numberOfEmployees,
     };
 

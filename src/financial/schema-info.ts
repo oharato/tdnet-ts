@@ -49,7 +49,8 @@ const SUMMARY_COLUMNS: ColumnDefinition[] = [
     column('current_cash_and_equivalents', 'REAL', '円', '当期 現金及び現金同等物', 'current_cash_and_equivalents >= 5000000000'),
     column('current_eps', 'REAL', '円/株', '当期 1株当たり当期純利益 (EPS)', 'current_eps >= 100'),
     column('current_bps', 'REAL', '円/株', '当期 1株当たり純資産 (BPS)', 'current_bps >= 1000'),
-    column('current_dividend_per_share', 'REAL', '円/株', '当期 1株当たり配当金', 'current_dividend_per_share >= 50'),
+    column('current_dividend_per_share', 'REAL', '円/株', '当期 年間1株当たり配当金（実績）', 'current_dividend_per_share >= 50'),
+    column('current_dividend_per_share_forecast', 'REAL', '円/株', '当期 年間1株当たり配当金（予想）', 'current_dividend_per_share_forecast >= 50'),
     column('current_number_of_employees', 'REAL', '人', '当期 従業員数', 'current_number_of_employees <= 500'),
 
     column('prior_net_sales', 'REAL', '円', '前期 売上高 / 営業収益', 'prior_net_sales >= 10000000000'),
@@ -63,7 +64,7 @@ const SUMMARY_COLUMNS: ColumnDefinition[] = [
     column('prior_cash_and_equivalents', 'REAL', '円', '前期 現金及び現金同等物', 'prior_cash_and_equivalents >= 5000000000'),
     column('prior_eps', 'REAL', '円/株', '前期 1株当たり当期純利益 (EPS)', 'prior_eps >= 100'),
     column('prior_bps', 'REAL', '円/株', '前期 1株当たり純資産 (BPS)', 'prior_bps >= 1000'),
-    column('prior_dividend_per_share', 'REAL', '円/株', '前期 1株当たり配当金', 'prior_dividend_per_share >= 50'),
+    column('prior_dividend_per_share', 'REAL', '円/株', '前期 年間1株当たり配当金（実績）', 'prior_dividend_per_share >= 50'),
     column('prior_number_of_employees', 'REAL', '人', '前期 従業員数', 'prior_number_of_employees <= 500'),
 
     column('operating_margin_current', 'REAL', '小数比率 (0.15 = 15%)', '当期 営業利益率', 'operating_margin_current >= 0.15'),
@@ -145,6 +146,11 @@ export const QUERY_EXAMPLES: QueryExample[] = [
         title: 'FCFプラス企業',
         description: '当期のフリーキャッシュ・フローがプラス',
         sql: 'free_cash_flow_current > 0',
+    },
+    {
+        title: '増配企業',
+        description: '当期の年間配当予想が前期実績を上回る',
+        sql: 'current_dividend_per_share_forecast > prior_dividend_per_share',
     },
     {
         title: '連結決算のみ',
