@@ -178,6 +178,7 @@ const METRIC_TAGS: Record<MetricKey, string[]> = {
     ],
     bps: [
         'NetAssetsPerShare',
+        'EquityAttributableToOwnersOfParentPerShareIFRS',
         'NetAssetsPerShareIFRS',
         'EquityPerShare',
         'BPS',
@@ -282,7 +283,10 @@ function chooseCurrentPeriodEnd(facts: ResolvedFact[]): string | null {
     let best: string | null = null;
     let bestEntry = { key: -1, total: -1 };
     for (const [periodEnd, entry] of counts) {
-        if (entry.key > bestEntry.key || (entry.key === bestEntry.key && entry.total > bestEntry.total)) {
+        if (entry.key > bestEntry.key
+            || (entry.key === bestEntry.key && entry.total > bestEntry.total)
+            // 過去分の添付財務諸表が混在して同点になる場合は、新しい期末を当期とみなす。
+            || (entry.key === bestEntry.key && entry.total === bestEntry.total && (best === null || periodEnd > best))) {
             best = periodEnd;
             bestEntry = entry;
         }
